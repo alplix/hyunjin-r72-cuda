@@ -81,7 +81,7 @@ echo "==> compiling CUDA-C core + shim"
 # 3. Configure the distributed.net client for x86_64.
 # ---------------------------------------------------------------------------
 echo "==> configuring dnetc client (x86_64)"
-( cd "$DN_BASE" && ./configure x86_64 )
+( cd "$DN_BASE" && ./configure linux-amd64 )
 
 # ---------------------------------------------------------------------------
 # 4. Build, injecting the Hyunjin objects and the CUDA runtime.

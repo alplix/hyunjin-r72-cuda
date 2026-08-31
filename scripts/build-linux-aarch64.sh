@@ -80,8 +80,8 @@ echo "==> compiling CUDA-C core + shim for aarch64"
 # ---------------------------------------------------------------------------
 # 3. Configure the dnetc client for arm64.
 # ---------------------------------------------------------------------------
-echo "==> configuring dnetc client (arm64)"
-( cd "$DN_BASE" && CC="$CC" CXX="$CXX" ./configure arm64 )
+echo "==> configuring dnetc client (aarch64)"
+( cd "$DN_BASE" && CC="$CC" CXX="$CXX" ./configure linux-arm64 )
 
 # ---------------------------------------------------------------------------
 # 4. Build with Hyunjin objects + CUDA runtime injected.
