@@ -29,7 +29,7 @@ set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 DN_BASE="${1:-$SRC/dnetc-client-base}"
-OUTDIR="${2:-build/linux-x86_64}"
+OUTDIR="${2:-$SRC/build/linux-x86_64}"
 
 # The dnetc source is tracked without the executable bit (committed from
 # Windows), so re-apply it to the build scripts before use.
@@ -103,7 +103,7 @@ echo "    LD       = nvcc (CUDA runtime)"
     CXX="$CXX" \
     ADDOBJS="$BASE_ADDOBJS $OBJ/hyunjin_r72.o $OBJ/hyunjin_r72_cuda.o" \
     LIBS="$BASE_LIBS -L$CUDA_LIB -lcudart -lrt -lpthread -lm" \
-    all 2>&1 | tee "$OUTDIR/make.log" )
+    dnetc 2>&1 | tee "$OUTDIR/make.log" )
 
 echo
 echo "==> BUILD FINISHED.  Client binary is in $DN_BASE/output/"
