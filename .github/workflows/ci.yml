@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUDA_VER: '13.3.0'
+  CUDA_VER: '13.2.0'
 
 jobs:
   build-linux-x86_64:
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install CUDA toolkit (host, native)
-        uses: Jimver/cuda-toolkit@v0.2.19
+        uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: ${{ env.CUDA_VER }}
           method: 'network'
@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install CUDA toolkit (aarch64 build tools only)
-        uses: Jimver/cuda-toolkit@v0.2.19
+        uses: Jimver/cuda-toolkit@v0.2.35
         continue-on-error: true
         with:
           cuda: ${{ env.CUDA_VER }}
