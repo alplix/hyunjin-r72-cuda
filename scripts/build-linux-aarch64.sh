@@ -93,6 +93,7 @@ BASE_ADDOBJS="$(cd "$DN_BASE" && grep '^ADDOBJS' Makefile | cut -d= -f2- | sed '
 BASE_LIBS="$(cd "$DN_BASE" && grep '^LIBS' Makefile | cut -d= -f2- | sed 's/^[[:space:]]*//')"
 
 echo "==> injecting Hyunjin objects + CUDA runtime into dnetc link"
+mkdir -p "$DN_BASE/output"
 ( cd "$DN_BASE" && "$MAKE" \
     LD="$NVCC" \
     CC="$CC" CXX="$CXX" \

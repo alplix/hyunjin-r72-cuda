@@ -98,6 +98,7 @@ echo "    ADDOBJS += $OBJ/hyunjin_r72.o $OBJ/hyunjin_r72_cuda.o"
 echo "    LIBS    += -L$CUDA_LIB -lcudart"
 echo "    LD       = nvcc (CUDA runtime)"
 
+mkdir -p "$DN_BASE/output"
 ( cd "$DN_BASE" && "$MAKE" \
     LD="$NVCC" \
     CXX="$CXX" \
