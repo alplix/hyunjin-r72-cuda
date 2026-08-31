@@ -31,6 +31,12 @@ SRC="$(cd "$(dirname "$0")/.." && pwd)"
 DN_BASE="${1:-$SRC/dnetc-client-base}"
 OUTDIR="${2:-build/linux-x86_64}"
 
+# The dnetc source is tracked without the executable bit (committed from
+# Windows), so re-apply it to the build scripts before use.
+find "$DN_BASE" -maxdepth 3 -type f \
+  \( -name 'configure' -o -name 'tomake' -o -name 'imake' -o -name '*.sh' -o -name '*.pl' \) \
+  -exec chmod +x {} + 2>/dev/null || true
+
 NVCC="${NVCC:-nvcc}"
 CXX="${CXX:-g++}"
 MAKE="${MAKE:-make}"
