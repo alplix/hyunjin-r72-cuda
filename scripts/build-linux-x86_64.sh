@@ -27,9 +27,9 @@
 
 set -euo pipefail
 
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
 DN_BASE="${1:-$SRC/dnetc-client-base}"
 OUTDIR="${2:-build/linux-x86_64}"
-SRC="$(cd "$(dirname "$0")/.." && pwd)"
 
 NVCC="${NVCC:-nvcc}"
 CXX="${CXX:-g++}"
