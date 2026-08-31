@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!--
+  Hyunjin - modern CUDA-Fortran RC5-72 core for distributed.net / Moo! Wrapper
+
+  BOINC Moo! Wrapper control file.  The wrapper reads this to learn which
+  task to execute and how.  It launches our custom dnetc client (with the
+  Hyunjin CUDA-Fortran core) in offline mode against the per-WU buffered
+  work files.
+
+  For use in distributed.net projects only.
+  Any other distribution or use of this source violates copyright.
+-->
+<job_desc>
+  <task>
+    <application>dnetc_hyunjin_1.0_windows_x86_64.exe</application>
+    <checkpoint_filename>chkpoint</checkpoint_filename>
+    <command_line>-ini dnetc.ini -runoffline -multiok=1</command_line>
+    <priority>3</priority>
+  </task>
+</job_desc>

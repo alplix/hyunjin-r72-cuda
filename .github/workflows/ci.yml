@@ -1,0 +1,49 @@
+# Build the Hyunjin RC5-72 cores on GitHub-hosted runners.
+
+# This workflow is a starting point. A real build needs:
+#   - a dnetc-client-base checkout (not packaged here),
+#   - the CUDA toolkit for the target platform,
+#   - an NVIDIA GPU runner to run the self-test (cuda / nvidia runners).
+#
+# The jobs below run the standalone CUDA-C self-test (unit-level validation)
+# and leave the Julia port as an independent check.
+
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  julia-selftest:
+    name: "Julia (CUDA.jl) self-test"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.12'
+      - name: Instantiate Julia env
+        run: julia --project=julia -e 'using Pkg; Pkg.instantiate()'
+      # The Julia self-test requires an NVIDIA GPU (CUDA.jl). Without a GPU
+      # runner, skip the run itself; the checkout + instantiate still validate
+      # that the environment resolves.
+      - name: Run Julia self-test
+        if: runner.os == 'Linux' && (contains(runner.labels, 'gpu') || contains(runner.labels, 'cuda'))
+        run: julia --project=julia julia/selftest.jl
+
+  cuda-selftest:
+    name: "CUDA-C self-test (needs GPU runner)"
+    runs-on: [self-hosted, linux, x64, gpu]   # adjust to your GPU runner
+    if: false   # enable once you have a GPU runner
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2
+        with:
+          cuda: '13.3'
+      - name: Build + run self-test
+        run: |
+          chmod +x scripts/build-selftest-linux.sh
+          scripts/build-selftest-linux.sh

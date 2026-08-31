@@ -1,0 +1,70 @@
+diff --git a/common/core_r72.cpp b/common/core_r72.cpp
+index b85b89e..2cb7cbd 100755
+--- a/common/core_r72.cpp
++++ b/common/core_r72.cpp
+@@ -118,6 +118,8 @@ extern "C" s32 rc5_72_unit_func_ocl_4pipe (RC5_72UnitWork *rc5_72unitwork, u32 *
+ extern "C" s32 rc5_72_unit_func_scalarfusion(RC5_72UnitWork *rc5_72unitwork, u32 *iterations, void *);
+ #endif
+ 
++extern "C" s32 CDECL rc5_72_unit_func_hyunjin( RC5_72UnitWork *, u32 *, void * );
++
+ 
+ /* ======================================================================== */
+ 
+@@ -160,6 +162,7 @@ const char **corenames_for_contest_rc572()
+       "GO 2-pipe alt",
+       "GO 2-pipe b",
+       "YK/RT AVX2",
++      "Hyunjin CUDA 4-pipe",
+       #else /* no nasm -> only ansi cores */
+       "ANSI 4-pipe",
+       "ANSI 2-pipe",
+@@ -171,6 +174,7 @@ const char **corenames_for_contest_rc572()
+       "GO 2-pipe c",
+       "GO 2-pipe d",
+       "YK AVX2",
++      "Hyunjin CUDA 4-pipe",
+   #elif (CLIENT_CPU == CPU_ARM)
+       "StrongARM 1-pipe",
+       "ARM 2/3/6/7 1-pipe",
+@@ -212,6 +216,7 @@ const char **corenames_for_contest_rc572()
+       "ANSI 2-pipe",
+       "ANSI 1-pipe",
+       "KS-ScalarFusion",
++      "Hyunjin CUDA 4-pipe",
+   #elif (CLIENT_CPU == CPU_MIPS)
+       "ANSI 4-pipe",
+       "ANSI 2-pipe",
+@@ -859,6 +864,10 @@ int selcoreSelectCore_rc572(Client *client, unsigned int threadindex,
+         unit_func.gen_72 = rc5_72_unit_func_avx2;
+         pipeline_count = 8;
+         break;
++      case 13:
++        unit_func.gen_72 = rc5_72_unit_func_hyunjin;
++        pipeline_count = 4;
++        break;
+      // -----------
+      #elif (CLIENT_CPU == CPU_AMD64)
+       case 0:
+@@ -882,6 +891,10 @@ int selcoreSelectCore_rc572(Client *client, unsigned int threadindex,
+         unit_func.gen_72 = rc5_72_unit_func_avx2;
+         pipeline_count = 16;
+         break;
++      case 5:
++        unit_func.gen_72 = rc5_72_unit_func_hyunjin;
++        pipeline_count = 4;
++        break;
+     // -----------
+     #elif (CLIENT_CPU == CPU_POWERPC) && (CLIENT_OS != OS_WIN32)
+       case 0:
+@@ -1089,6 +1102,10 @@ int selcoreSelectCore_rc572(Client *client, unsigned int threadindex,
+ 	unit_func.gen_72 = rc5_72_unit_func_scalarfusion;
+ 	pipeline_count = 1;
+ 	break;
++       case 4:
++	unit_func.gen_72 = rc5_72_unit_func_hyunjin;
++	pipeline_count = 4;
++	break;
+     #endif
+ 
+     }

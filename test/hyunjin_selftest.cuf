@@ -1,0 +1,193 @@
+! ============================================================================
+! hyunjin_selftest.cuf
+!
+! Hyunjin - modern CUDA-Fortran RC5-72 core for distributed.net / Moo! Wrapper
+!
+! Coded by Alperen Yavuz
+!
+! Standalone self-test / validation harness for the Hyunjin CUDA-Fortran
+! RC5-72 core.  Can be built and run with no BOINC/dnetc integration:
+!
+!     nvfortran -o hyunjin_selftest \
+!         hyunjin_selftest.cuf hyunjin_r72_host.cuf hyunjin_r72_device.cuf \
+!         hyunjin_r72_math.f90
+!
+! It validates the CPU reference against the dnetc RC5-72 test vectors, then
+! runs the GPU core and confirms it finds the known solution key at the
+! expected iteration offset.
+!
+! For use in distributed.net projects only.
+! Any other distribution or use of this source violates copyright.
+! ============================================================================
+
+program hyunjin_selftest
+  use, intrinsic :: iso_c_binding
+  use cudafor
+  use hyunjin_r72_host
+  use hyunjin_r72_math
+  implicit none
+
+  ! dnetc selftest vector #0 (official RSA test case #1), common/selftest.cpp.
+  !
+  ! dnetc mangles the 72-bit key via __SwitchRC572Format before handing it to
+  ! the core, and XORs the IV into the plaintext.  The mangled solution key and
+  ! the IV-mixed plaintext are what the RC5 core actually operates on:
+  !
+  !   solution key (direct)   = { hi C9,  mid 0C0353C0, lo D4E1FE85 }
+  !   solution key (mangled)  = { hi 85,  mid FEE1D4C0, lo 53030CC9 }
+  !   original plain          = { hi 6E6B6E75, lo 20656854 }
+  !   IV                      = { hi 419A1486, lo 1F59CE07 }
+  !   IV-mixed plain          = { hi 2FF17AF3, lo 3F3CA653 }
+  !   cypher                  = { hi 2FB7852A, lo 562D285A }
+  !
+  ! Start key (mangled, lo low 16 bits cleared) = { hi 00, mid 00E1D4C0,
+  !                                                 lo 53030CC9 }.
+  ! The core must step from that start key and find the mangled solution at
+  ! iteration offset 65157 (this is the authentic dnetc test walk).
+  integer(c_int32_t), parameter :: MAG_LO  = int(Z'53030CC9', c_int32_t)
+  integer(c_int32_t), parameter :: MAG_MI  = int(Z'FEE1D4C0', c_int32_t)
+  integer(c_int32_t), parameter :: MAG_HI  = int(Z'00000085', c_int32_t)
+  integer(c_int32_t), parameter :: PLAIN_LO = int(Z'3F3CA653', c_int32_t)  ! IV-mixed
+  integer(c_int32_t), parameter :: PLAIN_HI = int(Z'2FF17AF3', c_int32_t)  ! IV-mixed
+  integer(c_int32_t), parameter :: START_LO = int(Z'53030CC9', c_int32_t)
+  integer(c_int32_t), parameter :: START_MI = int(Z'00E1D4C0', c_int32_t)
+  integer(c_int32_t), parameter :: START_HI = int(Z'00000000', c_int32_t)
+  integer(c_int64_t), parameter :: SOL_OFFSET = int(65157, c_int64_t)
+  integer(c_int32_t), parameter :: CY_LO   = int(Z'562D285A', c_int32_t)
+  integer(c_int32_t), parameter :: CY_HI   = int(Z'2FB7852A', c_int32_t)
+
+  integer :: failures
+  integer(c_int32_t) :: clo, chi
+  integer(c_int32_t) :: khi, kmid, klo
+
+  integer(c_int64_t) :: iter_in, iter_out
+  integer(c_int32_t) :: n_check
+  integer(c_int32_t) :: chk_hi, chk_mid, chk_lo
+  integer(c_int32_t) :: fnd_hi, fnd_mid, fnd_lo
+  integer(c_int32_t) :: rl0_hi, rl0_mid, rl0_lo
+  integer(c_int) :: status
+  integer :: device, devCount
+  integer :: i
+
+  ! --------------------------------------------------------------------------
+  write(*,'(A)') '========================================================='
+  write(*,'(A)') ' Hyunjin RC5-72 CUDA core - coded by Alperen Yavuz'
+  write(*,'(A)') ' Self-test / validation harness'
+  write(*,'(A)') '========================================================='
+
+  ! --------------------------------------------------------------------------
+  ! 1) Validate the CPU reference against the known vector.
+  !    Encrypt the IV-mixed plaintext with the known (mangled) solution key;
+  !    must equal the expected cypher.
+  ! --------------------------------------------------------------------------
+  failures = 0
+  call r72_encrypt(MAG_HI, MAG_MI, MAG_LO, PLAIN_LO, PLAIN_HI, clo, chi)
+  write(*,'(A,Z8.8,A,Z8.8,A,Z8.8)') '   CPU encrypt: clo=', clo, ' chi=', chi, &
+                                    ' (expect cypher lo=562D285A hi=2FB7852A)'
+  if (clo .eq. CY_LO .and. chi .eq. CY_HI) then
+    write(*,'(A)') '   [PASS] CPU RC5-72 reference matches known vector'
+  else
+    write(*,'(A)') '   [FAIL] CPU RC5-72 reference mismatch'
+    failures = failures + 1
+  end if
+
+  ! --------------------------------------------------------------------------
+  ! 2) Validate key-increment arithmetic (on the mangled solution key).
+  ! --------------------------------------------------------------------------
+  khi = MAG_HI; kmid = MAG_MI; klo = MAG_LO
+  call r72_add(khi, kmid, klo, 1)          ! solution + 1
+  call r72_add(khi, kmid, klo, -1)         ! back to solution
+  if (khi .eq. MAG_HI .and. kmid .eq. MAG_MI .and. klo .eq. MAG_LO) then
+    write(*,'(A)') '   [PASS] 72-bit key increment round-trip'
+  else
+    write(*,'(A)') '   [FAIL] 72-bit key increment round-trip'
+    failures = failures + 1
+  end if
+
+  ! --------------------------------------------------------------------------
+  ! 3) Enumerate available CUDA devices.
+  ! --------------------------------------------------------------------------
+  i = cudaGetDeviceCount(devCount)
+  write(*,'(A,I0)') '   CUDA devices detected: ', devCount
+  if (devCount .le. 0) then
+    write(*,'(A)') ' [ABORT] No CUDA device available.'
+    stop 1
+  end if
+  device = 0
+
+  ! --------------------------------------------------------------------------
+  ! 4) Run the GPU core on the authentic dnetc test slice.
+  !    The core starts at the mangled start key { 00, 00E1D4C0, 53030CC9 }
+  !    (lo low 16 bits cleared) and must step up to the mangled solution key
+  !    { 85, FEE1D4C0, 53030CC9 } at iteration offset 65157, returning
+  !    RESULT_FOUND with the correct key.  This exercises the crypto math and
+  !    the L0-stepping / result-scanning logic exactly as dnetc drives it.
+  ! --------------------------------------------------------------------------
+  khi = START_HI; kmid = START_MI; klo = START_LO
+
+  iter_in = SOL_OFFSET + int(512, c_int64_t)   ! search a bit past the solution
+  iter_out = 0
+  n_check = 0
+  chk_hi = 0; chk_mid = 0; chk_lo = 0
+  fnd_hi = 0; fnd_mid = 0; fnd_lo = 0
+  rl0_hi = 0; rl0_mid = 0; rl0_lo = 0
+
+  ! Run the core with the dnetc test vector (IV-mixed plain/cypher passed through).
+  status = hyunjin_r72_run( &
+      PLAIN_HI, PLAIN_LO, CY_HI, CY_LO, &
+      khi, kmid, klo, &
+      iter_in, iter_out, device, 256, &
+      n_check, chk_hi, chk_mid, chk_lo, &
+      fnd_hi, fnd_mid, fnd_lo, &
+      rl0_hi, rl0_mid, rl0_lo)
+
+  write(*,'(A,I0,A,I0)') '   GPU core status=', status, ' iterations_out=', iter_out
+  write(*,'(A,Z8.8,1X,Z8.8,1X,Z8.8)') '   GPU found key =', fnd_hi, fnd_mid, fnd_lo
+  write(*,'(A,Z8.8,1X,Z8.8,1X,Z8.8)') '   expected key  =', MAG_HI, MAG_MI, MAG_LO
+  write(*,'(A,I0)') '   partial matches (n_check) = ', n_check
+
+  if (status .eq. RESULT_FOUND .and. &
+      iter_out .eq. SOL_OFFSET .and. &
+      fnd_hi .eq. MAG_HI .and. fnd_mid .eq. MAG_MI .and. fnd_lo .eq. MAG_LO) then
+    write(*,'(A,I0,A)') '   [PASS] GPU core found the exact key at offset ', SOL_OFFSET
+  else
+    write(*,'(A)') '   [FAIL] GPU core did not find the expected key'
+    failures = failures + 1
+  end if
+
+  ! --------------------------------------------------------------------------
+  ! 5) Negative case: a range with no solution must return RESULT_NOTHING and
+  !    consume the full requested range.
+  ! --------------------------------------------------------------------------
+  khi = MAG_HI; kmid = MAG_MI; klo = MAG_LO
+  call r72_add(khi, kmid, klo, 8)               ! start past the solution
+  iter_in = int(8, c_int64_t)
+  iter_out = 0
+  n_check = 0
+  fnd_hi = 0; fnd_mid = 0; fnd_lo = 0
+  status = hyunjin_r72_run( &
+      PLAIN_HI, PLAIN_LO, CY_HI, CY_LO, &
+      khi, kmid, klo, &
+      iter_in, iter_out, device, 256, &
+      n_check, chk_hi, chk_mid, chk_lo, &
+      fnd_hi, fnd_mid, fnd_lo, &
+      rl0_hi, rl0_mid, rl0_lo)
+
+  if (status .eq. RESULT_NOTHING .and. iter_out .eq. 8) then
+    write(*,'(A)') '   [PASS] empty range returns RESULT_NOTHING, consumed=8'
+  else
+    write(*,'(A,I0,A,I0)') '   [FAIL] empty-range behavior: status=', status, &
+                           ' consumed=', iter_out
+    failures = failures + 1
+  end if
+
+  ! --------------------------------------------------------------------------
+  write(*,'(A)') '---------------------------------------------------------'
+  if (failures .eq. 0) then
+    write(*,'(A)') ' ALL TESTS PASSED - Hyunjin core is sound.'
+  else
+    write(*,'(A,I0,A)') ' ', failures, ' TEST(S) FAILED.'
+    stop 1
+  end if
+
+end program hyunjin_selftest

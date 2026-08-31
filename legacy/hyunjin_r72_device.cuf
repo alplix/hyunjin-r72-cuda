@@ -1,0 +1,214 @@
+﻿! ============================================================================
+! hyunjin_r72_device.cuf
+!
+! Hyunjin - modern CUDA-Fortran RC5-72 core for distributed.net / Moo! Wrapper
+!
+! Coded by Alperen Yavuz
+!
+! GPU device-side kernel(s) for the RC5-72 key search, written in CUDA Fortran
+! (NVIDIA HPC SDK, nvfortran).
+!
+! RC5-72 = RC5-32/12/16 with a 72-bit key. Each work unit carries an IV-mixed
+! plaintext block, a cyphertext block and a 72-bit starting key L0 {hi,mid,lo}.
+! The core iterates L0 upward and finds the key whose encryption of "plain"
+! equals "cypher".
+!
+! For use in distributed.net projects only.
+! Any other distribution or use of this source violates copyright.
+! ============================================================================
+
+module hyunjin_r72_device
+  use, intrinsic :: iso_c_binding
+  implicit none
+
+  ! --------------------------------------------------------------------------
+  ! RC5 constants.  Unsigned 32-bit semantics are expressed via signed int32,
+  ! which is bit-identical for add/xor/rotate in two's-complement arithmetic.
+  ! --------------------------------------------------------------------------
+  integer(c_int32_t), parameter :: RC5_P = int(Z'B7E15163', c_int32_t)
+  integer(c_int32_t), parameter :: RC5_Q = int(Z'9E3779B9', c_int32_t)
+
+  ! Number of consecutive keys each thread tests per kernel launch.
+  integer, parameter :: HYUNJIN_PIPELINE = 4
+
+  ! Launch geometry (256 threads/block).
+  integer, parameter :: HYUNJIN_BLOCK_SIZE = 256
+
+contains
+
+  ! --------------------------------------------------------------------------
+  ! ROTL32(x,n): rotate a 32-bit word left by n bits (n applied mod 32).
+  ! Fortran ISHFT is a LOGICAL shift (zero fill), which is what RC5 requires.
+  ! --------------------------------------------------------------------------
+  attributes(device) function hy_rotl(x, n) result(r)
+    integer(c_int32_t), value :: x
+    integer, value :: n
+    integer(c_int32_t) :: r
+    integer :: s
+    integer(c_int64_t) :: xui
+    s = iand(n, 31)
+    if (s .eq. 0) then
+      r = x
+    else
+      ! NB: on the GPU, ISHFT(x,negative) is an ARITHMETIC (sign-extending)
+      ! right shift, unlike the unsigned logical shift RC5 needs.  Do the
+      ! right-shift half through an UNSIGNED 64-bit scratch so the high bits
+      ! that rotate down are zero-filled, matching C unsigned ROTL semantics.
+      xui = iand(int(x, c_int64_t), int(Z'FFFFFFFF', c_int64_t))   ! 0..2^32-1
+      r = ior(ishft(x, s), &
+              int(iand(ishft(xui, s - 32), int(Z'FFFFFFFF', c_int64_t)), c_int32_t))
+    end if
+  end function hy_rotl
+
+  ! --------------------------------------------------------------------------
+  ! Byte-swap a 32-bit word.
+  ! --------------------------------------------------------------------------
+  attributes(device) function hy_bswap32(x) result(r)
+    integer(c_int32_t), value :: x
+    integer(c_int32_t) :: r
+    integer :: b0, b1, b2, b3
+    b3 = iand(x, 255)
+    b2 = iand(ishft(x, -8), 255)
+    b1 = iand(ishft(x, -16), 255)
+    b0 = iand(ishft(x, -24), 255)
+    r = int(ior(ior(ior(b0, ishft(b1, 8)), ishft(b2, 16)), ishft(b3, 24)), c_int32_t)
+  end function hy_bswap32
+
+  ! --------------------------------------------------------------------------
+  ! Add "amount" to the 72-bit key {hi,mid,lo} using the EXACT dnetc RC5-72
+  ! enumeration order.  dnetc lays the 72-bit little-endian key out as
+  !     K = hi + bswap(mid) * 2^8 + bswap(lo) * 2^40
+  ! and cascades a carry from "hi" (least significant) through "mid" then "lo".
+  ! This mirrors rc5-72/ansi/r72-ref.cpp so the search keyspace matches dnetc.
+  ! --------------------------------------------------------------------------
+  attributes(device) subroutine hy_increment_l0(hi, mid, lo, amount)
+    integer(c_int32_t), intent(inout) :: hi, mid, lo
+    integer(c_int32_t), value :: amount
+    integer(c_int64_t) :: Hs, M64, Bs, lo64, Bc, carry, mask40
+    Hs    = int(hi, c_int64_t)
+    M64   = iand(int(hy_bswap32(mid), c_int64_t), int(Z'FFFFFFFF', c_int64_t)) ! unsigned 32
+    Bs    = iand(int(hy_bswap32(lo), c_int64_t), int(Z'FFFFFFFF', c_int64_t))  ! unsigned 32
+    mask40 = ishft(1_c_int64_t, 40) - 1_c_int64_t
+
+    lo64 = Hs + ishft(M64, 8)                    ! bits 0..39
+    lo64 = lo64 + int(amount, c_int64_t)
+    carry = ishft(lo64, -40)                     ! to bits 40+
+    lo64 = iand(lo64, mask40)
+    Bc = Bs + carry                              ! 32-bit (mod 2^32)
+
+    hi  = int(iand(lo64, 255_c_int64_t), c_int32_t)
+    mid = hy_bswap32(int(iand(ishft(lo64, -8), int(Z'FFFFFFFF', c_int64_t)), c_int32_t))
+    lo  = hy_bswap32(int(iand(Bc, int(Z'FFFFFFFF', c_int64_t)), c_int32_t))
+  end subroutine hy_increment_l0
+
+  ! --------------------------------------------------------------------------
+  ! hyunjin_r72_kernel
+  !
+  ! Each thread tests HYUNJIN_PIPELINE consecutive keys, starting from
+  ! L0 + pipe*(linear_index-1). Per-thread byte results hold 2-bit fields:
+  !   bit(2k)   -> partial match (A == cypher_lo)
+  !   bit(2k+1) -> exact match    (B == cypher_hi as well)
+  ! match_found is set if any partial match occurred (so the host only copies
+  ! results back when necessary).
+  ! --------------------------------------------------------------------------
+  attributes(global) subroutine hyunjin_r72_kernel( &
+      plain_hi, plain_lo, cypher_hi, cypher_lo, &
+      L0_hi, L0_mid, L0_lo, process_amount, &
+      results)
+    integer(c_int32_t), value :: plain_hi, plain_lo
+    integer(c_int32_t), value :: cypher_hi, cypher_lo
+    integer(c_int32_t), value :: L0_hi, L0_mid, L0_lo
+    integer(c_int32_t), value :: process_amount
+    integer(c_int32_t), intent(inout) :: results(*)
+
+    integer :: bx, tx, bd, idx, k, it
+    integer(c_int32_t) :: A, B, a_tmp, b_tmp
+    integer(c_int32_t) :: S(0:25)
+    integer(c_int32_t) :: L(0:2)
+    integer(c_int32_t) :: base
+    integer :: si, lj
+
+    bx = blockidx%x
+    tx = threadidx%x
+    bd = blockdim%x
+    idx = (bx - 1) * bd + tx
+
+    if (idx .gt. process_amount) return
+
+    base = (idx - 1) * HYUNJIN_PIPELINE
+
+    do k = 0, HYUNJIN_PIPELINE - 1
+
+      ! ---------------- S[] greedy table ----------------
+      do it = 0, 25
+        S(it) = RC5_P + it * RC5_Q
+      end do
+
+      ! ------- L[0]=lo, L[1]=mid, L[2]=hi (72-bit key) -------
+      L(0) = L0_lo
+      L(1) = L0_mid
+      L(2) = L0_hi
+      call hy_increment_l0(L(2), L(1), L(0), base + k)
+
+      ! ---------------- RC5 key expansion (3*t = 78 steps) ----------------
+      ! Standard RC5 key schedule operating on S[0..25] and L[0..2].
+      A = 0
+      B = 0
+      si = 0
+      lj = 0
+      do it = 1, 78
+        a_tmp = S(si) + A + B
+        S(si) = hy_rotl(a_tmp, 3)
+        A = S(si)
+
+        b_tmp = L(lj) + A + B
+        L(lj) = hy_rotl(b_tmp, int(A + B))
+        B = L(lj)
+
+        si = mod(si + 1, 26)
+        lj = mod(lj + 1, 3)
+      end do
+
+      ! ---------------- RC5-32/12/16 encryption (12 rounds) ----------------
+      A = plain_lo + S(0)
+      B = plain_hi + S(1)
+
+      A = hy_rotl(A .xor. B, int(B)) + S(2)
+      B = hy_rotl(B .xor. A, int(A)) + S(3)
+      A = hy_rotl(A .xor. B, int(B)) + S(4)
+      B = hy_rotl(B .xor. A, int(A)) + S(5)
+      A = hy_rotl(A .xor. B, int(B)) + S(6)
+      B = hy_rotl(B .xor. A, int(A)) + S(7)
+      A = hy_rotl(A .xor. B, int(B)) + S(8)
+      B = hy_rotl(B .xor. A, int(A)) + S(9)
+      A = hy_rotl(A .xor. B, int(B)) + S(10)
+      B = hy_rotl(B .xor. A, int(A)) + S(11)
+      A = hy_rotl(A .xor. B, int(B)) + S(12)
+      B = hy_rotl(B .xor. A, int(A)) + S(13)
+      A = hy_rotl(A .xor. B, int(B)) + S(14)
+      B = hy_rotl(B .xor. A, int(A)) + S(15)
+      A = hy_rotl(A .xor. B, int(B)) + S(16)
+      B = hy_rotl(B .xor. A, int(A)) + S(17)
+      A = hy_rotl(A .xor. B, int(B)) + S(18)
+      B = hy_rotl(B .xor. A, int(A)) + S(19)
+      A = hy_rotl(A .xor. B, int(B)) + S(20)
+      B = hy_rotl(B .xor. A, int(A)) + S(21)
+      A = hy_rotl(A .xor. B, int(B)) + S(22)
+      B = hy_rotl(B .xor. A, int(A)) + S(23)
+      A = hy_rotl(A .xor. B, int(B)) + S(24)
+      B = hy_rotl(B .xor. A, int(A)) + S(25)
+
+      ! ---------------- match check ----------------
+      if (A .eq. cypher_lo) then
+        results(idx) = results(idx) + int(ishft(1, 2 * k), c_int32_t)
+        if (B .eq. cypher_hi) then
+          results(idx) = results(idx) + int(ishft(2, 2 * k), c_int32_t)
+        end if
+      end if
+
+    end do
+
+  end subroutine hyunjin_r72_kernel
+
+end module hyunjin_r72_device
+

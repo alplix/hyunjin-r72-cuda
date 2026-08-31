@@ -1,0 +1,25 @@
+# Build artefacts
+/build/
+*.o
+*.obj
+*.exe
+*.dll
+make.log
+
+# Julia: ignore the user depot + precompile/temp dirs, but NOT the julia/ sources
+# (a bare "/Julia*" would also match the lowercase julia/ dir on case-insensitive
+# filesystems and hide the Julia port from git — that is why this is tight).
+**/*.cov
+**/*.mem
+
+# Julia precompile/temp (only inside the depot), Julia sources under julia/ stay tracked
+~/.julia/
+
+# OS cruft
+Thumbs.db
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp

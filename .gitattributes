@@ -1,0 +1,17 @@
+# Line endings: shell scripts must stay LF to run on Linux/WSL
+*.sh text eol=lf
+*.cu text eol=lf
+*.cpp text eol=lf
+*.c text eol=lf
+*.cuf text eol=lf
+*.f90 text eol=lf
+*.jl text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.xml text eol=lf
+*.ini text eol=lf
+*.patch text eol=lf
+
+# Binaries must never be normalized
+*.exe binary
+*.dll binary

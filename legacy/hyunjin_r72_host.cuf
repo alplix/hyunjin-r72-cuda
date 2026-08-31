@@ -1,0 +1,240 @@
+! ============================================================================
+! hyunjin_r72_host.cuf
+!
+! Hyunjin - modern CUDA-Fortran RC5-72 core for distributed.net / Moo! Wrapper
+!
+! Coded by Alperen Yavuz
+!
+! Host-side driver for the RC5-72 GPU core.  Exposes a single C-callable
+! entry point (bind(C)) that the small C shim (hyunjin_r72.c) invokes on
+! behalf of the distributed.net client.
+!
+! For use in distributed.net projects only.
+! Any other distribution or use of this source violates copyright.
+! ============================================================================
+
+module hyunjin_r72_host
+  use, intrinsic :: iso_c_binding
+  use cudafor
+  use hyunjin_r72_device
+  implicit none
+
+  ! dnetc Resultcode values (mirror ccoreio.h)
+  integer(c_int), parameter :: RESULT_WORKING = 0
+  integer(c_int), parameter :: RESULT_NOTHING = 1
+  integer(c_int), parameter :: RESULT_FOUND   = 2
+
+  ! Maximum blocks per launch.  Capped so the result buffer stays modest while
+  ! comfortably covering any realistic single-pass dnetc timeslice.
+  integer, parameter :: MAX_GRID = 65535
+
+contains
+
+  ! --------------------------------------------------------------------------
+  ! C-callable entry point used by the dnetc C shim.
+  ! --------------------------------------------------------------------------
+  integer(c_int) function hyunjin_r72_run( &
+      plain_hi, plain_lo, cypher_hi, cypher_lo, &
+      l0_hi, l0_mid, l0_lo, &
+      iterations_in, iterations_out, &
+      device, block_size, &
+      n_check, check_hi, check_mid, check_lo, &
+      found_hi, found_mid, found_lo, &
+      res_l0_hi, res_l0_mid, res_l0_lo) &
+      bind(C, name="hyunjin_r72_run") result(creg)
+    integer(c_int32_t), value :: plain_hi, plain_lo
+    integer(c_int32_t), value :: cypher_hi, cypher_lo
+    integer(c_int32_t), value :: l0_hi, l0_mid, l0_lo
+    integer(c_int64_t), value :: iterations_in
+    integer(c_int64_t), intent(out) :: iterations_out
+    integer(c_int), value :: device
+    integer(c_int), value :: block_size
+    integer(c_int32_t), intent(inout) :: n_check
+    integer(c_int32_t), intent(inout) :: check_hi, check_mid, check_lo
+    integer(c_int32_t), intent(out) :: found_hi, found_mid, found_lo
+    integer(c_int32_t), intent(out) :: res_l0_hi, res_l0_mid, res_l0_lo
+
+    integer :: curdev, devCount, nthreads
+    integer(c_int) :: ierr
+    integer(c_int64_t) :: done, remain, keys_this_pass
+    integer(c_int32_t) :: nthreads_this_pass, grid
+    integer(c_int32_t), allocatable :: h_res(:)          ! host results view
+    integer(c_int32_t), allocatable :: d_results(:)      ! device results
+    attributes(device) :: d_results
+    integer :: j, k
+    integer(c_int32_t) :: base_hi, base_mid, base_lo
+    integer(c_int32_t) :: c3, c2, c1
+    integer(c_int) :: ret
+    integer :: max_threads
+    integer :: st
+
+    creg = RESULT_NOTHING
+    iterations_out = 0
+    found_hi = 0; found_mid = 0; found_lo = 0
+    res_l0_hi = l0_hi; res_l0_mid = l0_mid; res_l0_lo = l0_lo
+    n_check = 0
+    check_hi = 0; check_mid = 0; check_lo = 0
+
+    ! ------------------------------------------------------------------
+    ! Select device.  Sanitize the requested index (dnetc may pass a value
+    ! that is out of range or negative in offline mode).
+    ! ------------------------------------------------------------------
+    ierr = cudaGetDeviceCount(devCount)
+    if (ierr .ne. 0 .or. devCount .le. 0) then
+      creg = -1
+      return
+    end if
+    if (device .lt. 0 .or. device .ge. devCount) device = 0
+    ierr = cudaGetDevice(curdev)
+    if (ierr .ne. 0) then
+      creg = -1
+      return
+    end if
+    if (curdev .ne. device) then
+      ierr = cudaSetDevice(device)
+      if (ierr .ne. 0) then
+        creg = -1
+        return
+      end if
+    end if
+
+    nthreads = block_size
+    if (nthreads .lt. 32) nthreads = HYUNJIN_BLOCK_SIZE
+    if (nthreads .gt. 1024) nthreads = 1024
+
+    ! ------------------------------------------------------------------
+    ! Allocate device + host result buffers (one 32-bit word per thread).
+    ! ------------------------------------------------------------------
+    max_threads = nthreads * MAX_GRID
+    allocate(d_results(max_threads), stat=st)
+    if (st .ne. 0) then
+      creg = -1
+      return
+    end if
+    allocate(h_res(max_threads), stat=st)
+    if (st .ne. 0) then
+      deallocate(d_results)
+      creg = -1
+      return
+    end if
+
+    base_hi = l0_hi; base_mid = l0_mid; base_lo = l0_lo
+    done = 0
+    ret = RESULT_NOTHING
+
+    ! ------------------------------------------------------------------
+    ! Process the requested key range in passes.  Each pass launches a grid
+    ! sized to the remaining work; every thread tests HYUNJIN_PIPELINE keys.
+    ! ------------------------------------------------------------------
+    do while (done .lt. iterations_in)
+      remain = iterations_in - done
+      keys_this_pass = remain
+      if (keys_this_pass .gt. int(nthreads, c_int64_t) * MAX_GRID &
+                                 * HYUNJIN_PIPELINE) then
+        keys_this_pass = int(nthreads, c_int64_t) * MAX_GRID * HYUNJIN_PIPELINE
+      end if
+
+      ! number of threads needed for keys_this_pass keys (each does PIPE keys)
+      nthreads_this_pass = int(ceiling(real(keys_this_pass) / real(HYUNJIN_PIPELINE)), c_int32_t)
+      grid = int(ceiling(real(nthreads_this_pass) / real(nthreads)), c_int32_t)
+
+      ! clear device buffer
+      d_results = 0
+
+      ! launch
+      call hyunjin_r72_kernel<<<grid, nthreads>>> &
+          (plain_hi, plain_lo, cypher_hi, cypher_lo, &
+           base_hi, base_mid, base_lo, nthreads_this_pass, &
+           d_results)
+      ierr = cudaGetLastError()
+      if (ierr .ne. 0) then
+        ret = -1
+        exit
+      end if
+
+      ierr = cudaDeviceSynchronize()
+      if (ierr .ne. 0) then
+        ret = -1
+        exit
+      end if
+
+      ! pull full result vector back to host and scan it
+      h_res = d_results
+
+      ! scan results for partial / exact matches
+      do j = 1, nthreads_this_pass
+        if (h_res(j) .eq. 0) cycle
+        do k = 0, HYUNJIN_PIPELINE - 1
+          if (iand(h_res(j), ishft(1, 2 * k)) .ne. 0) then
+            n_check = n_check + 1
+            c3 = base_hi; c2 = base_mid; c1 = base_lo
+            call hy_increment_l0_host(c3, c2, c1, &
+                                      HYUNJIN_PIPELINE * (j - 1) + k)
+            check_hi = c3; check_mid = c2; check_lo = c1
+            if (iand(h_res(j), ishft(2, 2 * k)) .ne. 0) then
+              found_hi = c3; found_mid = c2; found_lo = c1
+              iterations_out = done + int(HYUNJIN_PIPELINE * (j - 1) + k, c_int64_t)
+              ret = RESULT_FOUND
+              exit
+            end if
+          end if
+        end do
+        if (ret .eq. RESULT_FOUND) exit
+      end do
+      if (ret .eq. RESULT_FOUND) exit
+
+      ! advance base key by the number of keys actually processed
+      call hy_increment_l0_host(base_hi, base_mid, base_lo, &
+                                int(nthreads_this_pass * HYUNJIN_PIPELINE, c_int32_t))
+      done = done + int(nthreads_this_pass, c_int64_t) * HYUNJIN_PIPELINE
+    end do
+
+    ! report final key cursor and consumed count
+    res_l0_hi = base_hi; res_l0_mid = base_mid; res_l0_lo = base_lo
+    if (ret .eq. RESULT_NOTHING) iterations_out = done
+
+    deallocate(h_res)
+    deallocate(d_results)
+
+    creg = ret
+  end function hyunjin_r72_run
+
+  ! --------------------------------------------------------------------------
+  ! Byte-swap a 32-bit word (host version).
+  ! --------------------------------------------------------------------------
+  function hy_bswap32_host(x) result(r)
+    integer(c_int32_t), intent(in) :: x
+    integer(c_int32_t) :: r
+    integer :: b0, b1, b2, b3
+    b3 = iand(x, 255)
+    b2 = iand(ishft(x, -8), 255)
+    b1 = iand(ishft(x, -16), 255)
+    b0 = iand(ishft(x, -24), 255)
+    r = int(ior(ior(ior(b0, ishft(b1, 8)), ishft(b2, 16)), ishft(b3, 24)), c_int32_t)
+  end function hy_bswap32_host
+
+  ! --------------------------------------------------------------------------
+  ! Add "amount" to a 72-bit key (host version, in place).
+  ! Matches the dnetc RC5-72 enumeration order; see the device subroutine.
+  ! --------------------------------------------------------------------------
+  subroutine hy_increment_l0_host(hi, mid, lo, amount)
+    integer(c_int32_t), intent(inout) :: hi, mid, lo
+    integer(c_int32_t), intent(in) :: amount
+    integer(c_int64_t) :: Hs, M64, Bs, lo64, Bc, carry, mask40
+    Hs    = int(hi, c_int64_t)
+    M64   = iand(int(hy_bswap32_host(mid), c_int64_t), int(Z'FFFFFFFF', c_int64_t)) ! unsigned 32
+    Bs    = iand(int(hy_bswap32_host(lo), c_int64_t), int(Z'FFFFFFFF', c_int64_t))  ! unsigned 32
+    mask40 = ishft(1_c_int64_t, 40) - 1_c_int64_t
+
+    lo64 = Hs + ishft(M64, 8)
+    lo64 = lo64 + int(amount, c_int64_t)
+    carry = ishft(lo64, -40)
+    lo64 = iand(lo64, mask40)
+    Bc = Bs + carry
+
+    hi  = int(iand(lo64, 255_c_int64_t), c_int32_t)
+    mid = hy_bswap32_host(int(iand(ishft(lo64, -8), int(Z'FFFFFFFF', c_int64_t)), c_int32_t))
+    lo  = hy_bswap32_host(int(iand(Bc, int(Z'FFFFFFFF', c_int64_t)), c_int32_t))
+  end subroutine hy_increment_l0_host
+
+end module hyunjin_r72_host
