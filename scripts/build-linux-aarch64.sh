@@ -28,7 +28,7 @@
 
 set -euo pipefail
 
-DN_BASE="${1:?usage: $0 <path-to-dnetc-client-base> [outdir]}"
+DN_BASE="${1:-$SRC/dnetc-client-base}"
 OUTDIR="${2:-build/linux-aarch64}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 

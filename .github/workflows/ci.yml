@@ -1,49 +1,185 @@
-# Build the Hyunjin RC5-72 cores on GitHub-hosted runners.
-
-# This workflow is a starting point. A real build needs:
-#   - a dnetc-client-base checkout (not packaged here),
-#   - the CUDA toolkit for the target platform,
-#   - an NVIDIA GPU runner to run the self-test (cuda / nvidia runners).
+# Hyunjin CUDA RC5-72 core — build & publish prebuilt clients.
 #
-# The jobs below run the standalone CUDA-C self-test (unit-level validation)
-# and leave the Julia port as an independent check.
+# Produces ready-to-run distributed.net clients with the Hyunjin CUDA-C core
+# for Linux x86_64 (and, when an arm64 runner is available, Linux aarch64),
+# packages each one with its config (dnetc.ini / job.xml / app_info.xml /
+# app_config.xml + README) and uploads the archives to a GitHub Release.
+#
+# Triggers:
+#   - workflow_dispatch (manual): builds latest default branch, uploads to the
+#     release named by `release_tag` (tested release, prerequisite=false).
+#   - push of a tag matching v*: builds that tag and uploads to it (prerelease).
+#
+# NOTE: this only COMPILES + LINKS the client (nvcc + make); it does not run
+# crypto on a GPU, so a plain ubuntu runner is sufficient.
 
-name: CI
+name: build-and-publish
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release/tag to upload artifacts to (e.g. v1.0)'
+        required: false
+        type: string
   push:
-    branches: [ main ]
-  pull_request:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CUDA_VER: '13.3'
 
 jobs:
-  julia-selftest:
-    name: "Julia (CUDA.jl) self-test"
+  build-linux-x86_64:
+    name: Linux x86_64 client
     runs-on: ubuntu-latest
+    outputs:
+      archive: ${{ steps.archive.outputs.name }}
     steps:
       - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
-        with:
-          version: '1.12'
-      - name: Instantiate Julia env
-        run: julia --project=julia -e 'using Pkg; Pkg.instantiate()'
-      # The Julia self-test requires an NVIDIA GPU (CUDA.jl). Without a GPU
-      # runner, skip the run itself; the checkout + instantiate still validate
-      # that the environment resolves.
-      - name: Run Julia self-test
-        if: runner.os == 'Linux' && (contains(runner.labels, 'gpu') || contains(runner.labels, 'cuda'))
-        run: julia --project=julia julia/selftest.jl
 
-  cuda-selftest:
-    name: "CUDA-C self-test (needs GPU runner)"
-    runs-on: [self-hosted, linux, x64, gpu]   # adjust to your GPU runner
-    if: false   # enable once you have a GPU runner
+      - name: Install CUDA toolkit (host, native)
+        uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: ${{ env.CUDA_VER }}
+          method: 'network'
+          sub-version: '13.3.0'
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq make patch gcc g++ tar
+
+      - name: Build client with Hyunjin core injected
+        run: |
+          chmod +x scripts/build-linux-x86_64.sh
+          scripts/build-linux-x86_64.sh
+
+      - name: Assemble distribution package
+        id: archive
+        run: |
+          set -euo pipefail
+          OUT="dist/linux-x86_64/pkg"
+          rm -rf "$OUT"; mkdir -p "$OUT"
+          cp -f packaging/dnetc.ini         "$OUT/dnetc.ini"
+          cp -f packaging/job.xml           "$OUT/job.xml"
+          cp -f packaging/app_info.xml      "$OUT/app_info.xml"
+          cp -f packaging/app_config.xml    "$OUT/app_config.xml"
+          cp -f dnetc-client-base/output/dnetc "$OUT/dnetc_hyunjin_1.0_linux_x86_64" 2>/dev/null \
+            || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_x86_64"
+          chmod +x "$OUT/dnetc_hyunjin_1.0_linux_x86_64"
+          cp -f README.md "$OUT/README.txt"
+          # reference ini points at core <5> only if repacked below; keep consistent
+          echo "banner:" > "$OUT/BUILD.txt"
+          echo "  Hyunjin RC5-72 CUDA core v1.0 - coded by Alperen Yavuz" >> "$OUT/BUILD.txt"
+          NAME="hyunjin_linux_x86_64_cuda_custom_v1.0"
+          tar -C "$OUT" -czf "dist/linux-x86_64/$NAME.tar.gz" .
+          echo "name=$NAME.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "dist/linux-x86_64/$NAME.tar.gz" | cut -f1)"
+          ls -la dist/linux-x86_64/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hyunjin_linux_x86_64_cuda_custom_v1.0
+          path: dist/linux-x86_64/*.tar.gz
+          retention-days: 30
+
+  build-linux-aarch64:
+    name: Linux aarch64 client
+    # Use a native ARM64 hosted runner so CUDA can target aarch64-linux without
+    # emulation. Disabled by default (allow-failure style: runs only on the
+    # ubuntu-* arm64 runners GitHub offers, and only when enable-aarch64=on).
+    runs-on: ubuntu-24.04-arm
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2
+
+      - name: Install CUDA toolkit (aarch64 build tools only)
+        uses: Jimver/cuda-toolkit@v0.2.19
+        continue-on-error: true
         with:
-          cuda: '13.3'
-      - name: Build + run self-test
+          cuda: ${{ env.CUDA_VER }}
+          method: 'network'
+
+      - name: Install aarch64 toolchain + deps
         run: |
-          chmod +x scripts/build-selftest-linux.sh
-          scripts/build-selftest-linux.sh
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq make patch gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+              gcc g++ tar
+
+      - name: Build client (aarch64) with Hyunjin core injected
+        continue-on-error: true
+        run: |
+          chmod +x scripts/build-linux-aarch64.sh
+          CROSS_CC=aarch64-linux-gnu-gcc CROSS_CXX=aarch64-linux-gnu-g++ \
+            scripts/build-linux-aarch64.sh
+
+      - name: Assemble distribution package
+        id: archive
+        run: |
+          set -euo pipefail
+          OUT="dist/linux-aarch64/pkg"
+          rm -rf "$OUT"; mkdir -p "$OUT"
+          cp -f packaging/dnetc.ini         "$OUT/dnetc.ini"
+          cp -f packaging/job.xml           "$OUT/job.xml"
+          cp -f packaging/app_info.xml      "$OUT/app_info.xml"
+          cp -f packaging/app_config.xml    "$OUT/app_config.xml"
+          cp -f dnetc-client-base/output/dnetc "$OUT/dnetc_hyunjin_1.0_linux_aarch64" 2>/dev/null \
+            || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
+          chmod +x "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
+          cp -f README.md "$OUT/README.txt"
+          NAME="hyunjin_linux_aarch64_cuda_custom_v1.0"
+          tar -C "$OUT" -czf "dist/linux-aarch64/$NAME.tar.gz" .
+          echo "name=$NAME.tar.gz" >> "$GITHUB_OUTPUT"
+          ls -la dist/linux-aarch64/
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        continue-on-error: true
+        with:
+          name: hyunjin_linux_aarch64_cuda_custom_v1.0
+          path: dist/linux-aarch64/*.tar.gz
+          retention-days: 30
+
+  publish:
+    name: Publish archives to GitHub Release
+    needs: [build-linux-x86_64]
+    runs-on: ubuntu-latest
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine target release/tag
+        id: rel
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "name=$(echo "${{ github.event.inputs.release_tag || github.ref_name }}")" >> "$GITHUB_OUTPUT"
+
+      - name: Download built archives
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.rel.outputs.tag }}"
+          echo "Uploading to release tag: $TAG"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+                 --title "Hyunjin CUDA RC5-72 core $TAG" --generate-notes
+          ls artifacts/*.tar.gz
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber artifacts/*.tar.gz
+          echo "Published to: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

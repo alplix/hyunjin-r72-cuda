@@ -1,0 +1,90 @@
+
+ distributed.net client for RISC OS v3.10 or later.
+ Released by Peter Teichmann <teichp@distributed.net>
+ Document revision $Id: readme.riscos,v 1.10 2008/12/30 13:24:41 andreasb Exp $
+
+ Welcome to the distributed.net client.
+
+ This document covers information specific to the client for RISCOS.
+ Refer to other enclosed documentation or browse the online FAQ at
+ http://faq.distributed.net/ for non-platform-specific documentation.
+
+    1.0  Getting started
+    2.0  Important notes
+
+ 1.0  Getting started -------------------------------------------------------
+
+    Just unpack the client in a directory of your choice. Install the
+    included !System update, which contains the SharedUnixLibrary 1.10
+    and a recent FPEmulator for machines running RISC OS 3.1. On a machine
+    with a recent !Boot application, start this application, select "System"
+    and follow the instructions. On older machines you need install these
+    modules manually.
+
+    Since the client originates from the Unix world, it is a command line
+    program which is controlled by command line options. If you like to
+    make use of all the opportunities it offers, you have to run it
+    manually using the CLI, be it a taskwindow or singletasking. However,
+    for the most common tasks there are obey files supplied:
+
+    !Bench      benchmarks the client in singletasking mode
+    !Config     starts the client's configuration dialog
+    !Help       shows the client's help
+    !Run        starts the client in a taskwindow
+    !RunQuiet   starts the client without any output in background
+    !RunSingle  starts the client in singletasking mode
+    !Stop       stops the client if it was started without output
+    !Test       tests the cores for compliance
+    !Update     starts a buffer update
+
+    Usually you will not need anything else than these obey files.
+    Start the client using the file "!Run".
+
+    If you have never run the client before, it will initiate the
+    menu-driven configuration. Save and quit when done, the
+    configuration file "dnetc/ini" will be saved in the same directory
+    as the client. Then, simply restart the client. From that point on
+    it will use the saved configuration.
+
+    The configuration options are fairly self-explanatory and can be run
+    at any time by starting the file "!Config" or starting the client with
+    the '-config' option. A list of command line options is available by
+    starting "!Help" or starting the client with '-help'.
+
+    For more information have a look at http://faq.distributed.net/
+
+ 2.0  Important notes ---------------------------------------------------------
+
+    The client became quite memory-hungry. You need at least 3652KB free
+    to participate in the RC5-72 contest, and 7752KB for OGR-26. It will
+    therefore most probably only run on RiscPCs and newer machines. In order
+    to pass all tests for OGR-NG, you will need at least 32MB free.
+    
+    When stopping a client, never just close the task window or kill the
+    client. This will leave the dynamic areas and slowly fill up your memory.
+    If you do not have configure a checkpoint file, it will loose all work on
+    the current block. To avoid this, press the "Esc" key in the task window
+    and wait until the client quits. After that you can close the task window.
+    
+    If you want to run the client quiet, start "!RunQuiet" instead. To
+    stop it, start the file "!Stop". This will create a file with the name
+    "exitfile" in the clients directory. Note that this method may take up
+    to 30 seconds. This method of stopping the client will only work if you
+    have configured the exit flag file name "exitfile". This is already done
+    for you in the supplied "dnetc/ini" file by default, but you should take
+    care not to change this option during configuration.
+    
+    If you want to run the client automatically when the computer starts,
+    you can not simply copy "!Run" or "!RunQuiet" to your desktop boot
+    directory. You will first have to edit the files and replace <Obey$Dir>
+    with the path of your client directory.
+    
+    The client is configured to use a checkpoint file in the supplied
+    "dnetc/ini" file by default. This will make the client save its state
+    every couple of minutes, so that it can be recovered if the client is
+    killed by accident. This happens for instance if you shutdown your
+    computer without stopping the client first. You may want to change this
+    option if this prevents your harddisk from spinning down.
+    
+    If you have problems, don't hesitate to contact me at
+    <teichp@distributed.net>.

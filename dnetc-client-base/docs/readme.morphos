@@ -1,0 +1,159 @@
+
+ distributed.net client for MorphOS (PPC)
+ Released by Harry Sintonen <sintonen@iki.fi>
+ Document revision $Id: readme.morphos,v 1.7 2013/07/26 00:34:06 piru Exp $
+
+ Welcome to the distributed.net client.
+
+ This document covers information specific to the client for MorphOS.
+ Refer to other enclosed documentation or browse the online FAQ at
+ http://faq.distributed.net/ for non-platform-specific documentation.
+
+    1.0  System requirements
+    2.0  Getting started
+    3.0  MorphOS client specific notes
+         3.1 Setting the time zone
+         3.2 Packets and work units?
+         3.3 Dial-up detection caveats
+    4.0  GUI for MorphOS client
+         4.1 Preferences and options
+         4.2 ARexx commands
+    5.0  Credits & thank yous
+
+ 1.0  System requirements --------------------------------------------
+
+     - MorphOS 0.4 or greater (MUI4 is required for the GUI part).
+     - PowerPC 603e or greater.
+     - Altivec cores require CPU with AltiVec and MorphOS 2.0 or newer.
+     - A TCP/IP stack (MorphOS built-in one will do just fine)
+
+ 2.0  Getting started ------------------------------------------------
+
+    To install the client, drag the client's drawer to a location of your
+    choice and fire it up.  If you would like the client to be started
+    automatically each time your boot, click the "Add to WBStartup" icon
+    or run the client from a shell using the '-install' option - this
+    will install an icon to your WBStartup drawer, which will run the
+    client from where you actually placed the client's drawer (DO NOT copy
+    the client into your WBStartup drawer).
+
+    If you have never run the client before, it will initiate the
+    menu-driven configuration. Save and quit when done, the
+    configuration file will be saved in the same directory as the
+    client. Then, simply restart the client. From that point on it will
+    use the saved configuration.
+
+    The configuration options are fairly self-explanatory and can be run
+    at any time by starting the client with the '-config' option or
+    selecting 'Configure' in the GUI's menus.  A list of command line
+    options is available by starting the client with '-help'.
+
+    A detailed guide to the various configuration options is available
+    online at http://faq.distributed.net/
+
+ 3.0  Notes ----------------------------------------------------------
+
+    If you want to contribute to the Team MorphOS, you can join the team
+    from address:
+    http://stats.distributed.net/team/tmsummary.php?project_id=27&team=32053
+
+    If you want to contribute to the Distributed Amiga effort, visit the
+    effort home page at http://distributed.amiga.org/.
+
+    IMPORTANT: By defaut the work is unattributed.  Configure the email
+    address in the General Client Options to get the work attributed to
+    you.
+
+    By default the client is configured to pause if the system is running
+    on battery power.  The client is also paused while charging the battery
+    to avoid straining it unnecessarily.  The client can be configured to
+    ignore the battery status if so desired.
+
+  3.1  Setting the time zone -----------------------------------------
+
+    The client always displays the current time in UTC - not your local
+    time!  For this to work correctly, you need to ensure your timezone
+    is set correctly.  This can be done through the System Settings Locale
+    page.
+
+  3.2  Packets and work units?
+
+    If you are upgrading from the old 2.710x clients, you may not be
+    familiar with the new terminology that has replaced "blocks".  The
+    new clients refer to "packets" and "work units".  Descriptions of
+    their meanings can be found at
+    http://faq.distributed.net/cache/138.html
+
+  3.3  Dial-up detection caveats
+
+    If you choose to enable the dial-up detection feature of the client,
+    please be aware that you will not be able to exit your TCP/IP stack
+    software until the "Detected IP-link drop" message has been shown by
+    the client (which happens within 5 seconds of going offline).  If
+    you try to exit before that, the client will still be using
+    bsdsocket.library, and your TCP/IP software will most likely complain.
+
+    Also note that if you want to make use of the "automatic go online"
+    feature (dials your ISP automatically when the client runs out of
+    work), you will need to be using Genesis. This feature is not
+    supported for other TCP/IP stack software.
+
+ 4.0  GUI for MorphOS client -----------------------------------------
+
+    The client built-in GUI is enabled when running the client from
+    Ambient (e.g. by double-clicking its' icon).  If starting the client
+    from the Shell, the client will run in console mode.  In GUI mode,
+    the console output will be shown in the GUI, and the client may be
+    controlled by the menus.
+
+    MorphOS client can also use the classic AmigaOS client GUI
+    library, if preferred.  You need to install ClassAct/ReAction if
+    you wish to use it.  To use it, replace the included
+    dnetcgui.library with a library from the Classic AmigaOS client
+    release.
+
+  4.1  Preferences and options ---------------------------------------
+
+    The GUI may be configured to your liking by using the MUI
+    settings.  To edit choose "Project/MUI settings..." from menu.
+    To configure the listview, select "Lists". Additionally, the
+    following tooltype can be used in the client's icon:
+
+    HIDE
+
+      Specify this tooltype to cause the client to not open a window on
+      startup, and show an icon and/or tools menu item (defaults to
+      both, but may be changed in the preferences) on the desktop
+      instead.
+
+  4.2  ARexx commands
+
+    It is possible to control the clients with ARexx, via the DNETC.1
+    port.  The following commands are available:
+
+    QUIT    - Shutdown the client and exit
+    HIDE    - Iconify/hide the GUI
+    SHOW    - Uniconify/show the GUII
+    PAUSE   - Pause the client
+    UNPAUSE - Unpause the client
+    UPDATE  - Flush the client buffers and fetch new packets
+    FETCH   - Fetch new packets for the client
+    FLUSH   - Flush the client buffers
+    RESTART - Restart the clients
+    CLEAR   - Clear the console window
+
+ 5.0  Credits & thank yous -------------------------------------------
+
+    -- Ilkka Lehtoranta (Original MUI dnetcgui.library)
+
+    -- Grzegorz Kraszewski (spotting some really nasty bug, work on
+       non-NList MUI GUI)
+
+    -- Herbert Klackl (spotting and reporting checkpoint bug)
+
+    -- Christian Rosentreter (nicer cow icon)
+
+    -- MorphOS client is based on the AmigaOS port:
+       - Oliver Roberts (AmigaOS port) and all who contributed to
+         AmigaOS client.
+

@@ -6,6 +6,16 @@
 *.dll
 make.log
 
+# Embedded dnetc-client-base: never track the client it produces or its
+# per-target build output (the checked-in dnetc-client-base/ is source only).
+dnetc-client-base/output/
+dnetc-client-base/dnetc
+dnetc-client-base/dnetc.exe
+dnetc-client-base/dnetc.com
+dnetc-client-base/dnetc.map
+dnetc-client-base/dnetc.scr
+dnetc-client-base/selftest_hyj.txt
+
 # Julia: ignore the user depot + precompile/temp dirs, but NOT the julia/ sources
 # (a bare "/Julia*" would also match the lowercase julia/ dir on case-insensitive
 # filesystems and hide the Julia port from git — that is why this is tight).

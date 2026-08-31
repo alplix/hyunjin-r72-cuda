@@ -1,0 +1,100 @@
+
+ distributed.net client for OpenVMS.
+ Released by Jason Brady <jr_brady@comcast.net>
+ Document revision $Id: readme.vms,v 1.7 2008/12/30 13:24:41 andreasb Exp $
+                  
+ Welcome to the distributed.net client!
+
+ This document covers information specific to the client for OpenVMS on
+ the Alpha platform.  Non-platform-specific information can be found in
+ the online FAQ at http://faq.distributed.net/
+
+    1.0  Getting started
+    2.0  Platform-specific notes
+
+
+ 1.0  Getting Started -------------------------------------------------------
+
+    Create a directory for a single instance of the client:
+        $CREATE/DIR SYS$SYSDEVICE:[DNETC]
+        $SET DEFAULT SYS$SYSDEVICE:[DNETC]
+
+    Copy the distribution ZIP file to the newly-created directory and unzip.
+    The UNZIP should be performed on the OpenVMS system because transferring 
+    unzipped files from other platforms, especially binary executables, can
+    be problematic.
+
+    GO-VMS.COM assumes the above device and directory specifications. Modify
+    the command procedure if an alternate location is chosen.
+    
+    First start the client interactively:
+        $@GO-VMS INTER "-config" 
+
+    To quote the Distributed.Net documentation:
+         "If you have never run the client before, it will initiate
+         the menu-driven configuration.  Save and quit when done; 
+         the configuration file will be saved in the same directory 
+         as the client.  Then restart the client.  From that point 
+         on it will use the saved configuration.
+
+         "The configuration options are fairly self-explanatory and 
+         can be invoked at any time by starting the client with the 
+         '-config' option.  A list of command line options is available
+         by starting the client with '-help'.  You only need to do this
+         the first time you run an executable in order to specify the
+         options for your environment."
+
+    After restarting the client and confirming that it connects, retrieves
+    work units and starts processing, type CTRL-C.  The client recognizes
+    a break request and terminates.
+
+    Note:  The client can also be run without the go-vms.com DCL "wrapper"
+           by defining it as a foreign command:  
+                $DNETC :== $SYS$SYSDEVICE:[DNETC]DNETC.EXE
+           Then invoking it with or without command line options:
+                $DNETC                [no command line options]
+                $DNETC "-update"      [fetch and flush buffers]
+
+    The GO-VMS.COM procedure can be used to run the client as a batch job
+    if you do not wish to tie up an interactive session.  To do so, create 
+    the DNETC_BATCH batch queue:
+
+        $INIT/QUEUE/START/BASE_PRIORITY=3/JOB_LIMIT=1 DNETC_BATCH/BATCH
+
+    Then invoke the command procedure as shown.  By specifying a checkpoint 
+    file (.e.g, dnetc.ckp) the client will save its state every couple of 
+    minutes and avoid data loss when stopped.  As with interactive mode,
+    command line options can be specified inside double-quotes.  Examples:
+
+        $@GO-VMS BATCH                [no command line options]
+        $@GO-VMS BATCH "-n 1"         [stop after one packet processed] 
+
+    Be sure to stop the client before shutting down the system by issuing:
+
+        $STOP/ID=processid
+
+    OpenVMS is very much an SMP (symmetric multiprocessing) operating system.
+    However, this client wasn't built to support SMP due to the porting hard-
+    ware's limitations.  For now, run multiple client instances if your system
+    has more than one CPU (you need to create a separate directory for each 
+    instance and change the batch queue's job limit accordingly).
+
+
+ 2.0  Platform-Specific Notes  ----------------------------------------------
+
+    Changes:
+    10/15/2003 - Rewrote David Sowder's original readme.vms along with
+                 command procedures make-vms.com and go-vms.com.
+
+    The OpenVMS client currently runs on the Alpha architecture.  VAX 
+    systems are not supported.
+
+    This client was ported and tested on an Alphaserver 300 4/266 (an EV4
+    processor) running OpenVMS 7.3-1, TCPIP v5.3 and CXX v6.5.  
+
+    Alternate TCPIP stacks such as Multinet and TCPWare are not supported 
+    due to lack of available machines upon which to port and test a client.  
+    
+    The same holds true for an SMP capable multi-threaded version as well
+    as versions optimized for other Alpha processors (EV5, etc.).
+

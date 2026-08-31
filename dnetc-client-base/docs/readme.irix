@@ -1,0 +1,7 @@
+$Id: readme.irix,v 1.3 2002/09/02 00:35:45 andreasb Exp $
+
+Additional information for IRIX clients.
+========================================
+
+The 2.8XXX series of clients are built on Irix 6.5. They will not run
+on Irix releases prior to 6.5.

@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# Build full tarbulls for AmigaOS, including icons and dir structure
+#  by Oliver Roberts <oliver@futaura.co.uk>
+#
+# params ARCNAME/A,CPUNAME/A,DIRNAME/A,DOCFILE1,DOCFILE2,DOCFILE3,DOCFILE4
+
+if [ "$3" = "dnetc_mos" ]; then
+  lha -q x plat/amigaos/tools/icons_mos.lha T:
+   mv /T/drawer.info /T/${3}.info
+else
+  lha -q x plat/amigaos/tools/icons.lha T:
+  mv /T/${2}/drawer.info /T/${3}.info
+fi
+mv /T/${2} /T/${3}
+if [ "$3" = "dnetc_mos" ]; then
+  cp -p dnetc dnetcgui.library /T/${3}
+elif [ "$3" = "dnetc" ]; then
+  cp -p dnetc dnetcgui.library /T/${3}
+else
+  cp -p dnetc_${2} dnetcgui.library /T/${3}
+fi
+cp -p ${4} ${5} ${6} ${7} /T/${3}/docs
+rm -f ${1}
+lha -IxrH1 a ${1} T:${3} T:${3}.info
+rm -fr /T/${3} /T/${3}.info /T/68k /T/ppc
