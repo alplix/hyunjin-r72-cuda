@@ -51,7 +51,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq make patch gcc g++ tar
+          sudo apt-get install -y -qq make patch gcc g++ nasm tar
 
       - name: Build client with Hyunjin core injected
         run: |
@@ -109,7 +109,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq make patch gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-              gcc g++ tar
+              gcc g++ nasm tar
 
       - name: Build client (aarch64) with Hyunjin core injected
         continue-on-error: true
