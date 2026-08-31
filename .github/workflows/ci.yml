@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUDA_VER: '13.3'
+  CUDA_VER: '13.3.0'
 
 jobs:
   build-linux-x86_64:
@@ -47,7 +47,6 @@ jobs:
         with:
           cuda: ${{ env.CUDA_VER }}
           method: 'network'
-          sub-version: '13.3.0'
 
       - name: Install build prerequisites
         run: |
