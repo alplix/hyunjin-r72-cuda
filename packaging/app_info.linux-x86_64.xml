@@ -13,10 +13,7 @@
 
       <boinc>/projects/moowrap.net/
 
-  and mark the application as anonymous by adding
-      <use_anonymous_platform>1</use_anonymous_platform>
-  plus the <anonymous_platform> block to cc_config.xml in the BOINC data dir
-  when offline sign-up / anonymous platform is not permitted.
+
 
   For use in distributed.net projects only.
   Any other distribution or use of this source violates copyright.
@@ -46,7 +43,12 @@
 
   <app_version>
     <app_name>dnetc</app_name>
-    <version_num>521</version_num>
+    <version_num>104</version_num>
+    <platform>linux_x86_64</platform>
+    <avg_ncpus>0.1</avg_ncpus>
+    <max_ncpus>1</max_ncpus>
+    <plan_class>opencl_nvidia_101</plan_class>
+    <flops>100000000000.0</flops>
     <file_ref>
       <file_name>dnetc_hyunjin_1.0_linux_x86_64</file_name>
       <main_program/>
@@ -62,17 +64,11 @@
       <copy_file/>
     </file_ref>
 
-    <!-- Force NVIDIA GPU availability so BOINC only dispatches when a CUDA
+    <!-- NVIDIA GPU availability so BOINC only dispatches when a CUDA
          device is present. -->
     <coproc>
-      <type>CUDA</type>
+      <type>NVIDIA</type>
       <count>1</count>
     </coproc>
-
-    <platform>linux_intelx86</platform>
-    <avg_ncpus>0.1</avg_ncpus>
-    <max_ncpus>1</max_ncpus>
-    <flops>100000000000.0</flops>
-    <api_version>ADVANCED</api_version>
   </app_version>
 </app_info>

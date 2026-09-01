@@ -13,10 +13,7 @@
 
       <boinc>/projects/moowrap.net/
 
-  and mark the application as anonymous by adding
-      <use_anonymous_platform>1</use_anonymous_platform>
-  plus the <anonymous_platform> block to cc_config.xml in the BOINC data dir
-  when offline sign-up / anonymous platform is not permitted.
+
 
   For use in distributed.net projects only.
   Any other distribution or use of this source violates copyright.
