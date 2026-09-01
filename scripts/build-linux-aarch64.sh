@@ -72,7 +72,7 @@ fi
 # 2. Compile the CUDA-C core + C++ shim for aarch64.
 # ---------------------------------------------------------------------------
 echo "==> compiling CUDA-C core + shim for aarch64"
-"$NVCC" -c -O3 -target=arm64-linux $GPU_ARCHS \
+"$NVCC" -c -O3 $GPU_ARCHS \
     -o "$OBJ/hyunjin_r72_cuda.o" "$SRC/src/hyunjin_r72_cuda.cu"
 "$CXX" -c -O2 -I"$DN_BASE/common" \
     -o "$OBJ/hyunjin_r72.o" "$SRC/src/hyunjin_r72.cpp"
