@@ -15,6 +15,9 @@
 
 name: build-and-publish
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
