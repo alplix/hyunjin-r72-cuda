@@ -1,0 +1,104 @@
+===========================================================================
+  Hyunjin CUDA RC5-72 core for distributed.net / Moo! Wrapper
+  INSTALLATION GUIDE (end user)
+===========================================================================
+
+This package gives you a ready-to-run BOINC client with the Hyunjin
+CUDA-C RC5-72 core built in.  It works with the Moo! Wrapper project on
+BOINC.  You do NOT need to build anything; just install the files below
+and restart BOINC.
+
+---------------------------------------------------------------------------
+1. REQUIREMENTS
+---------------------------------------------------------------------------
+
+  * A 64-bit CPU:
+      - Linux package:  amd64 (Intel/AMD x86_64)  or  arm64 (aarch64)
+      - Windows package: x86_64
+  * An NVIDIA GPU with a recent driver installed.
+      - Ampere (sm_80), Hopper (sm_90), Blackwell / RTX 50xx (sm_100/sm_120).
+  * The BOINC client, already attached to the "Moo! Wrapper" project
+    (https://moowrap.net/).
+
+---------------------------------------------------------------------------
+2. FIND YOUR BOINC DATA DIRECTORY
+---------------------------------------------------------------------------
+
+This path is also shown in the BOINC manager
+(Advanced -> Status... under "BOINC files").
+
+        Windows:  C:\ProgramData\BOINC\
+        Linux:    ~/BOINC/          (package manager install: /var/lib/boinc-client/)
+
+The PROJECT slot you need is then:
+
+        Windows:  C:\ProgramData\BOINC\projects\moowrap.net\
+        Linux:    ~/BOINC/projects/moowrap.net/
+
+---------------------------------------------------------------------------
+3. COPY THE FILES
+---------------------------------------------------------------------------
+
+Copy ALL files from this archive into the project slot above:
+
+        dnetc_hyunjin_1.0_linux_x86_64      (Linux client, or _linux_aarch64)
+        dnetc_hyunjin_1.0_windows_x86_64.exe  (Windows client)
+        job.xml
+        app_info.xml
+        app_config.xml
+        dnetc.ini
+        README.txt   (technical notes)
+
+There is no separate wrapper binary: the Hyunjin client is the
+main_program.  job.xml tells BOINC how to launch it, app_info.xml
+describes it as an anonymous application, and dnetc.ini selects the
+Hyunjin core ([rc5-72] core = 5).
+
+---------------------------------------------------------------------------
+4. ENABLE ANONYMOUS PLATFORM
+---------------------------------------------------------------------------
+
+Copy the file "cc_config.xml" from this archive into the BOINC DATA
+DIRECTORY root (see step 2 - not the projects sub-folder).  It contains:
+
+        <use_anonymous_platform>1</use_anonymous_platform>
+
+If a cc_config.xml already exists there, add that one line to it.
+
+Restart the BOINC client (or press "Scan" in the BOINC manager and wait).
+
+---------------------------------------------------------------------------
+5. VERIFY
+---------------------------------------------------------------------------
+
+Once BOINC downloads a Moo! Wrapper work unit you should see:
+
+  * The app name "RC5-72" with the NVIDIA GPU shown as the executing
+    resource.
+  * In ~/BOINC/projects/moowrap.net/slots/0/ the client log "stderr.txt"
+    prints at startup:
+
+        Hyunjin RC5-72 CUDA core v1.0 - coded by Alperen Yavuz
+
+  * If you never see GPU usage, check that NVIDIA OpenCL/CUDA support is
+    intact and that your driver is current (driver versions older than
+    Blackwell's need the 550+ series).
+
+---------------------------------------------------------------------------
+6. TROUBLESHOOTING
+---------------------------------------------------------------------------
+
+  * "no anonymous work available" - ensure the cc_config.xml line is in
+    the data-directory root and the client was restarted afterwards.
+  * "0x... illegal instruction"  - you are running the wrong architecture
+    package on your CPU.
+  * No GPU / falls back to CPU:   confirm the NVIDIA driver is installed
+    and a CUDA-capable GPU is visible to BOINC under "Tasks" -> the Moo
+    Wrapper GPU checkbox.
+  * dnetc.ini is read from each job slot (copied by app_info.xml's
+    <copy_file/>).  Do not edit it unless you know what you are doing.
+
+---------------------------------------------------------------------------
+For use in distributed.net projects only.
+Any other distribution or use of this source violates copyright.
+===========================================================================

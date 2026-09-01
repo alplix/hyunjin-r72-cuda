@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="ISO-8859-1" ?>
 <!--
-  Hyunjin - modern CUDA-Fortran RC5-72 core for distributed.net / Moo! Wrapper
+  Hyunjin - modern CUDA-C RC5-72 core for distributed.net / Moo! Wrapper
 
   Recommended client configuration (@<NUM_CPUS>-style resource sharing).
 

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="ISO-8859-1" ?>
 <!--
-  Hyunjin - modern CUDA-Fortran RC5-72 core for distributed.net / Moo! Wrapper
+  Hyunjin - modern CUDA-C RC5-72 core for distributed.net / Moo! Wrapper
 
   Moo! Wrapper anonymous-application descriptor.
 
   This app_info.xml is for the Moo! Wrapper ("opencl_nvidia"-style) BOINC
-  wrapper + our custom dnetc client with the Hyunjin CUDA-Fortran core.
+  wrapper + our custom dnetc client with the Hyunjin CUDA-C core.
   Place this file (plus the client binary and the ini/job files) in:
 
       <boinc>/projects/moowrap.net/
@@ -17,7 +17,7 @@
 
   Tune these fields to the actual wrapper name/version that Moo! Wrapper
   serves for your model.  The moowrap job.xml (BOINC wrapper control file)
-  runs our client, which loads the CUDA-Fortran GPU core.
+  runs our client, which loads the CUDA-C GPU core.
 
   For use in distributed.net projects only.
   Any other distribution or use of this source violates copyright.
@@ -25,7 +25,7 @@
 <app_info>
   <app>
     <name>dnetc</name>
-    <user_friendly_name>distributed.net RC5-72 (Hyunjin CUDA-Fortran core)</user_friendly_name>
+    <user_friendly_name>distributed.net RC5-72 (Hyunjin CUDA-C core)</user_friendly_name>
   </app>
 
   <!-- Moo! Wrapper - BOINC wrapper binary that orchestrates the dnetc client -->
@@ -86,3 +86,4 @@
     <api_version>ADVANCED</api_version>
   </app_version>
 </app_info>
+

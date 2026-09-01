@@ -76,6 +76,8 @@ jobs:
           cp -f packaging/job.linux-x86_64.xml           "$OUT/job.xml"
           cp -f packaging/app_info.linux-x86_64.xml      "$OUT/app_info.xml"
           cp -f packaging/app_config.xml    "$OUT/app_config.xml"
+          cp -f packaging/cc_config.example.xml  "$OUT/cc_config.xml"
+          cp -f packaging/INSTALL.txt       "$OUT/INSTALL.txt"
           cp -f dnetc-client-base/output/dnetc "$OUT/dnetc_hyunjin_1.0_linux_x86_64" 2>/dev/null \
             || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_x86_64"
           chmod +x "$OUT/dnetc_hyunjin_1.0_linux_x86_64"
@@ -136,6 +138,8 @@ jobs:
           cp -f packaging/job.linux-aarch64.xml           "$OUT/job.xml"
           cp -f packaging/app_info.linux-aarch64.xml      "$OUT/app_info.xml"
           cp -f packaging/app_config.xml    "$OUT/app_config.xml"
+          cp -f packaging/cc_config.example.xml  "$OUT/cc_config.xml"
+          cp -f packaging/INSTALL.txt       "$OUT/INSTALL.txt"
           cp -f dnetc-client-base/output/dnetc "$OUT/dnetc_hyunjin_1.0_linux_aarch64" 2>/dev/null \
             || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
           chmod +x "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
