@@ -55,21 +55,10 @@ main_program.  job.xml tells BOINC how to launch it, app_info.xml
 describes it as an anonymous application, and dnetc.ini selects the
 Hyunjin core ([rc5-72] core = 5).
 
----------------------------------------------------------------------------
-4. ENABLE ANONYMOUS PLATFORM
----------------------------------------------------------------------------
-
-Copy the file "cc_config.xml" from this archive into the BOINC DATA
-DIRECTORY root (see step 2 - not the projects sub-folder).  It contains:
-
-        <use_anonymous_platform>1</use_anonymous_platform>
-
-If a cc_config.xml already exists there, add that one line to it.
-
 Restart the BOINC client (or press "Scan" in the BOINC manager and wait).
 
 ---------------------------------------------------------------------------
-5. VERIFY
+4. VERIFY
 ---------------------------------------------------------------------------
 
 Once BOINC downloads a Moo! Wrapper work unit you should see:
@@ -86,11 +75,11 @@ Once BOINC downloads a Moo! Wrapper work unit you should see:
     Blackwell's need the 550+ series).
 
 ---------------------------------------------------------------------------
-6. TROUBLESHOOTING
+5. TROUBLESHOOTING
 ---------------------------------------------------------------------------
 
-  * "no anonymous work available" - ensure the cc_config.xml line is in
-    the data-directory root and the client was restarted afterwards.
+  * "no anonymous work available" - make sure app_info.xml/job.xml are in
+    the project slot directory and the client was restarted afterwards.
   * "0x... illegal instruction"  - you are running the wrong architecture
     package on your CPU.
   * No GPU / falls back to CPU:   confirm the NVIDIA driver is installed
