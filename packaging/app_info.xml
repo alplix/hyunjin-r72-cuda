@@ -5,20 +5,15 @@
 
   Moo! Wrapper anonymous-application descriptor.
 
-  This app_info.xml is for the Moo! Wrapper ("opencl_nvidia"-style) BOINC
-  wrapper + our custom dnetc client with the Hyunjin CUDA-C core.
-  Place this file (plus the client binary and the ini/job files) in:
+  This app_info.xml is for the Moo! Wrapper NVIDIA OpenCL app
+  (opencl_nvidia_101, version 1.05) and our custom dnetc client with the
+  Hyunjin CUDA-C core.  The wrapper binary below is Moo's stock BOINC
+  wrapper for that app; job.xml tells it to launch our client, and our
+  dnetc.ini selects the Hyunjin core ([rc5-72] core = 5).
+
+  Place this file (plus all referenced binaries/ini/job files) in:
 
       <boinc>/projects/moowrap.net/
-
-  and mark the application as anonymous by adding
-      <use_anonymous_platform>1</use_anonymous_platform>
-  plus the <anonymous_platform> block to cc_config.xml in the BOINC data dir
-  when offline sign-up / anonymous platform is not permitted.
-
-  Tune these fields to the actual wrapper name/version that Moo! Wrapper
-  serves for your model.  The moowrap job.xml (BOINC wrapper control file)
-  runs our client, which loads the CUDA-C GPU core.
 
   For use in distributed.net projects only.
   Any other distribution or use of this source violates copyright.
@@ -26,12 +21,13 @@
 <app_info>
   <app>
     <name>dnetc</name>
-    <user_friendly_name>distributed.net RC5-72 (Hyunjin CUDA-C core)</user_friendly_name>
+    <user_friendly_name>Distributed.net Client</user_friendly_name>
   </app>
 
-  <!-- Moo! Wrapper - BOINC wrapper binary that orchestrates the dnetc client -->
+  <!-- Moo! Wrapper - BOINC wrapper binary (NVIDIA OpenCL, 1.05) that
+       orchestrates the dnetc client.  Matches the server app version. -->
   <file_info>
-    <name>dnetc_wrapper_1.5_windows_x86_64__cuda_100.exe</name>
+    <name>dnetc_wrapper_1.5_windows_intelx86__opencl_nvidia_101.exe</name>
     <executable/>
   </file_info>
 
@@ -54,13 +50,19 @@
 
   <app_version>
     <app_name>dnetc</app_name>
-    <version_num>521</version_num>
+    <version_num>105</version_num>
+    <platform>windows_intelx86</platform>
+    <avg_ncpus>0.1</avg_ncpus>
+    <max_ncpus>1</max_ncpus>
+    <plan_class>opencl_nvidia_101</plan_class>
+    <flops>100000000000.0</flops>
     <file_ref>
-      <file_name>dnetc_wrapper_1.5_windows_x86_64__cuda_100.exe</file_name>
+      <file_name>dnetc_wrapper_1.5_windows_intelx86__opencl_nvidia_101.exe</file_name>
       <main_program/>
     </file_ref>
     <file_ref>
       <file_name>dnetc_hyunjin_1.0_windows_x86_64.exe</file_name>
+      <copy_file/>
     </file_ref>
     <file_ref>
       <file_name>job.xml</file_name>
@@ -73,18 +75,11 @@
       <copy_file/>
     </file_ref>
 
-    <!-- Force NVIDIA GPU availability (matches the wrappers' coproc declaration)
-         so BOINC only dispatches when a CUDA device is present. -->
+    <!-- NVIDIA GPU availability (matches the server app's coproc deployment):
+         one NVIDIA device per job slot. -->
     <coproc>
-      <type>CUDA</type>
+      <type>NVIDIA</type>
       <count>1</count>
     </coproc>
-
-    <platform>windows_intelx86</platform>
-    <avg_ncpus>0.1</avg_ncpus>
-    <max_ncpus>1</max_ncpus>
-    <flops>100000000000.0</flops>
-    <api_version>ADVANCED</api_version>
   </app_version>
 </app_info>
-
