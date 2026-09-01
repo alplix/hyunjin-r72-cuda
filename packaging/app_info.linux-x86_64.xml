@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!--
+  Hyunjin - modern CUDA-C RC5-72 core for distributed.net / Moo! Wrapper
+
+  Moo! Wrapper anonymous-application descriptor (Linux x86_64).
+
+  Linux packages ship a standalone dnetc client (no separate wrapper binary),
+  so the Hyunjin client itself is the main_program.  BOINC runs it directly in
+  offline mode against the per-WU buffered work files.
+
+  Place this file (plus the client binary and the ini/job files) in:
+
+      <boinc>/projects/moowrap.net/
+
+  and mark the application as anonymous by adding
+      <use_anonymous_platform>1</use_anonymous_platform>
+  plus the <anonymous_platform> block to cc_config.xml in the BOINC data dir
+  when offline sign-up / anonymous platform is not permitted.
+
+  For use in distributed.net projects only.
+  Any other distribution or use of this source violates copyright.
+-->
+<app_info>
+  <app>
+    <name>dnetc</name>
+    <user_friendly_name>distributed.net RC5-72 (Hyunjin CUDA core)</user_friendly_name>
+  </app>
+
+  <!-- Custom distributed.net client with the Hyunjin core compiled in -->
+  <file_info>
+    <name>dnetc_hyunjin_1.0_linux_x86_64</name>
+    <executable/>
+  </file_info>
+
+  <!-- Our job.xml + dnetc.ini take the place of Moo's app-level job/ini files.
+       Without these file_refs the BOINC client would stage Moo's stock
+       dnetc.ini (which has no [rc5-72] core=5 line), silently disabling the
+       Hyunjin core.  copy_file puts a working copy in each job slot. -->
+  <file_info>
+    <name>job.xml</name>
+  </file_info>
+  <file_info>
+    <name>dnetc.ini</name>
+  </file_info>
+
+  <app_version>
+    <app_name>dnetc</app_name>
+    <version_num>521</version_num>
+    <file_ref>
+      <file_name>dnetc_hyunjin_1.0_linux_x86_64</file_name>
+      <main_program/>
+    </file_ref>
+    <file_ref>
+      <file_name>job.xml</file_name>
+      <open_name>job.xml</open_name>
+      <copy_file/>
+    </file_ref>
+    <file_ref>
+      <file_name>dnetc.ini</file_name>
+      <open_name>dnetc.ini</open_name>
+      <copy_file/>
+    </file_ref>
+
+    <!-- Force NVIDIA GPU availability so BOINC only dispatches when a CUDA
+         device is present. -->
+    <coproc>
+      <type>CUDA</type>
+      <count>1</count>
+    </coproc>
+
+    <platform>linux_intelx86</platform>
+    <avg_ncpus>0.1</avg_ncpus>
+    <max_ncpus>1</max_ncpus>
+    <flops>100000000000.0</flops>
+    <api_version>ADVANCED</api_version>
+  </app_version>
+</app_info>

@@ -68,8 +68,8 @@ jobs:
           OUT="dist/linux-x86_64/pkg"
           rm -rf "$OUT"; mkdir -p "$OUT"
           cp -f packaging/dnetc.ini         "$OUT/dnetc.ini"
-          cp -f packaging/job.xml           "$OUT/job.xml"
-          cp -f packaging/app_info.xml      "$OUT/app_info.xml"
+          cp -f packaging/job.linux-x86_64.xml           "$OUT/job.xml"
+          cp -f packaging/app_info.linux-x86_64.xml      "$OUT/app_info.xml"
           cp -f packaging/app_config.xml    "$OUT/app_config.xml"
           cp -f dnetc-client-base/output/dnetc "$OUT/dnetc_hyunjin_1.0_linux_x86_64" 2>/dev/null \
             || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_x86_64"
@@ -128,8 +128,8 @@ jobs:
           OUT="dist/linux-aarch64/pkg"
           rm -rf "$OUT"; mkdir -p "$OUT"
           cp -f packaging/dnetc.ini         "$OUT/dnetc.ini"
-          cp -f packaging/job.xml           "$OUT/job.xml"
-          cp -f packaging/app_info.xml      "$OUT/app_info.xml"
+          cp -f packaging/job.linux-aarch64.xml           "$OUT/job.xml"
+          cp -f packaging/app_info.linux-aarch64.xml      "$OUT/app_info.xml"
           cp -f packaging/app_config.xml    "$OUT/app_config.xml"
           cp -f dnetc-client-base/output/dnetc "$OUT/dnetc_hyunjin_1.0_linux_aarch64" 2>/dev/null \
             || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
