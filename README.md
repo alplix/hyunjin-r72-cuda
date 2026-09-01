@@ -7,6 +7,14 @@ A modern, GPU-accelerated **RC5-72** key-search core for the
 targeting NVIDIA GPUs — **Ampere (sm_80)**, **Hopper (sm_90)** and
 **Blackwell / RTX 50-series (sm_100 / sm_120)**.
 
+> **This is an entirely original, from-scratch implementation — not a fork,
+> port or derivative of any existing RC5-72 GPU core.** The crypto kernel,
+> host plumbing, dnetc shim and the package/Moo! Wrapper integration were all
+> written independently with a completely separate codebase and design of its
+> own ("a completely different system"), sharing nothing with the stock
+> distributed.net CUDA cores other than the public RC5-72 work-unit format it
+> interoperates with.
+
 The core exists in **three equivalent implementations** that all produce
 bit-identical results and all pass the official RC5-72 self-test vectors:
 

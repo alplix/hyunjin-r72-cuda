@@ -1,6 +1,7 @@
 ===========================================================================
   Hyunjin CUDA RC5-72 core for distributed.net / Moo! Wrapper
   INSTALLATION GUIDE (end user)
+  Coded by Alperen Yavuz
 ===========================================================================
 
 This package gives you a ready-to-run BOINC client with the Hyunjin
