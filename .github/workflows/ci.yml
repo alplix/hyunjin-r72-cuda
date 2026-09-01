@@ -1,14 +1,17 @@
 # Hyunjin CUDA RC5-72 core — build & publish prebuilt clients.
 #
 # Produces ready-to-run distributed.net clients with the Hyunjin CUDA-C core
-# for Linux x86_64 (and, when an arm64 runner is available, Linux aarch64),
-# packages each one with its config (dnetc.ini / job.xml / app_info.xml /
-# app_config.xml + README) and uploads the archives to a GitHub Release.
+# for Linux x86_64 and Linux aarch64, packages each one with its config
+# (dnetc.ini / job.xml / app_info.xml / app_config.xml + README) and uploads
+# the archives to a GitHub Release.
 #
 # Triggers:
 #   - workflow_dispatch (manual): builds latest default branch, uploads to the
-#     release named by `release_tag` (tested release, prerequisite=false).
-#   - push of a tag matching v*: builds that tag and uploads to it (prerelease).
+#     release named by `release_tag`.
+#   - push of a tag matching v*: builds that tag and uploads to it.
+#
+# Package archives are named from the target tag (e.g. v1.3 produces
+# hyunjin_linux_x86_64_cuda_custom_v1.3.tar.gz and the aarch64 counterpart).
 #
 # NOTE: this only COMPILES + LINKS the client (nvcc + make); it does not run
 # crypto on a GPU, so a plain ubuntu runner is sufficient.
@@ -40,6 +43,8 @@ jobs:
   build-linux-x86_64:
     name: Linux x86_64 client
     runs-on: ubuntu-latest
+    env:
+      PKG_VERSION: ${{ github.event.inputs.release_tag || github.ref_name }}
     outputs:
       archive: ${{ steps.archive.outputs.name }}
     steps:
@@ -78,7 +83,7 @@ jobs:
           # reference ini points at core <5> only if repacked below; keep consistent
           echo "banner:" > "$OUT/BUILD.txt"
           echo "  Hyunjin RC5-72 CUDA core v1.0 - coded by Alperen Yavuz" >> "$OUT/BUILD.txt"
-          NAME="hyunjin_linux_x86_64_cuda_custom_v1.0"
+          NAME="hyunjin_linux_x86_64_cuda_custom_${PKG_VERSION}"
           tar -C "$OUT" -czf "dist/linux-x86_64/$NAME.tar.gz" .
           echo "name=$NAME.tar.gz" >> "$GITHUB_OUTPUT"
           echo "size=$(du -h "dist/linux-x86_64/$NAME.tar.gz" | cut -f1)"
@@ -86,18 +91,18 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: hyunjin_linux_x86_64_cuda_custom_v1.0
+          name: hyunjin_linux_x86_64_cuda_custom_${{ env.PKG_VERSION }}
           path: dist/linux-x86_64/*.tar.gz
           retention-days: 30
 
   build-linux-aarch64:
     name: Linux aarch64 client
-    # Use a native ARM64 hosted runner so CUDA can target aarch64-linux without
-    # emulation. Disabled by default (allow-failure style: runs only on the
-    # ubuntu-* arm64 runners GitHub offers, and only when enable-aarch64=on).
+    # Uses a native ARM64 hosted runner so CUDA can target aarch64-linux
+    # without emulation. Built for both manual runs and tag pushes.
     runs-on: ubuntu-24.04-arm
-    if: ${{ github.event_name == 'workflow_dispatch' }}
     continue-on-error: true
+    env:
+      PKG_VERSION: ${{ github.event.inputs.release_tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -135,7 +140,7 @@ jobs:
             || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
           chmod +x "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
           cp -f README.md "$OUT/README.txt"
-          NAME="hyunjin_linux_aarch64_cuda_custom_v1.0"
+          NAME="hyunjin_linux_aarch64_cuda_custom_${PKG_VERSION}"
           tar -C "$OUT" -czf "dist/linux-aarch64/$NAME.tar.gz" .
           echo "name=$NAME.tar.gz" >> "$GITHUB_OUTPUT"
           ls -la dist/linux-aarch64/
@@ -144,7 +149,7 @@ jobs:
         if: ${{ always() }}
         continue-on-error: true
         with:
-          name: hyunjin_linux_aarch64_cuda_custom_v1.0
+          name: hyunjin_linux_aarch64_cuda_custom_${{ env.PKG_VERSION }}
           path: dist/linux-aarch64/*.tar.gz
           retention-days: 30
 
