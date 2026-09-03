@@ -20,6 +20,7 @@ return "@(#)$Id: buffpub.cpp,v 1.14 2008/12/30 20:58:40 andreasb Exp $"; }
 #include "problem.h"  //Resultcode enum
 #include "buffupd.h"  // BUFFERUPDATE_FETCH / BUFFERUPDATE_FLUSH
 #include "buffbase.h" //the functions we're intending to export.
+#include "moo521.h"   // Moo! Wrapper RC5-72 buffer file codec
 
 /* --------------------------------------------------------------------- */
 
@@ -159,6 +160,182 @@ static int BufferCloseFile( FILE *file )
 }
 
 /* --------------------------------------------------------------------- */
+/* Moo! Wrapper RC5-72 buffer-file support (moo521 format)                */
+/* --------------------------------------------------------------------- */
+
+/* forward decl: defined later in this file */
+static void __switch_byte_order( WorkRecord *dest, const WorkRecord *source,
+                                 int from_disk );
+
+/* Quick Moo magic detection.  Returns 1 if `filename` exists and begins
+ * with the 32-byte Moo header (magic 83 B6 34 1A), 0 otherwise. */
+static int moo_file_detect( const char *filename )
+{
+  const char *qfname = GetFullPathForFilename( filename );
+  FILE *f = fopen( qfname, "rb" );
+  if (!f) return 0;
+  u8 magic[4];
+  int is_moo = 0;
+  if (fread(magic, 1, 4, f) == 4)
+    is_moo = moo521_is_header( magic );
+  fclose(f);
+  return is_moo;
+}
+
+/* Count the non-blank Moo packets in an already-open file positioned after
+ * the header.  `reccount` is the packet count from the header.
+ * Mirrors the stock BufferCountFileRecords semantics: each non-blank packet
+ * is decrypted, normalized to host order and, if its contest matches
+ * `contest`, contributes to *packetcountP and its SWU count to *normcountP. */
+static void moo_count_records( FILE *f, u32 reccount, unsigned int contest,
+                               unsigned long *packetcountP,
+                               unsigned long *normcountP )
+{
+  unsigned long packetcount = 0, normcount = 0;
+  u8 pkt[MOO521_RECLEN];
+  u8 blank[MOO521_RECLEN];
+  memset( blank, 0, MOO521_RECLEN );
+  for (u32 i = 0; i < reccount; i++)
+  {
+    if (fread(pkt, 1, MOO521_RECLEN, f) != MOO521_RECLEN)
+      break;
+    if (memcmp(pkt, blank, MOO521_RECLEN) == 0)
+      continue;
+    u8 body[168];
+    WorkRecord wr;
+    memset( &wr, 0, sizeof(wr) );
+    moo521_decode( pkt, body );
+    moo521_unpack( body, &wr );
+    wr.contest = RC5_72;
+    __switch_byte_order( &wr, &wr, 1 /* net->host */ );
+    if (wr.contest == contest)
+    {
+      packetcount++;
+      if (normcountP)
+      {
+        unsigned int swucount;
+        if (BufferGetRecordInfo( &wr, 0, &swucount ) >= 0)
+          normcount += swucount;
+      }
+    }
+  }
+  if (packetcountP) *packetcountP = packetcount;
+  if (normcountP)   *normcountP   = normcount;
+}
+
+/* Read one Moo packet from an open file at the given record index.
+ * Decrypts it and maps it into `data`.  Returns 0 on success,
+ * +1 if the packet was blank (consumed), -1 on I/O error. */
+static int moo_read_one_record( FILE *f, unsigned long reccount,
+                                unsigned long recno, WorkRecord *data )
+{
+  u8 pkt[MOO521_RECLEN];
+  u8 body[168];
+  long fpos = (long)(MOO521_HEADERLEN + recno * MOO521_RECLEN);
+  if (fseek(f, fpos, SEEK_SET) != 0)
+    return -1;
+  if ((unsigned long)fread(pkt, 1, MOO521_RECLEN, f) != MOO521_RECLEN)
+    return -1;
+
+  /* blank packet = all zeros */
+  static const u8 zero_pkt[MOO521_RECLEN] = {0};
+  if (memcmp(pkt, zero_pkt, MOO521_RECLEN) == 0)
+    return +1; /* blank, skip */
+
+  /* decrypt */
+  moo521_decode( pkt, body );
+
+  /* map body -> WorkRecord */
+  moo521_unpack( body, data );
+  /* The Moo body is a serialized WorkRecord in network (big-endian) byte
+   * order (verified: contest field reads 00 00 00 05 == RC5_72).  Mirror
+   * the stock BufferGetFileRecord path and normalize the `work` union
+   * dwords to host order.  contest must be host-order RC5_72 first so
+   * __switch_byte_order dispatches to the RC5_72 ntohl branch. */
+  data->contest = RC5_72;
+  __switch_byte_order( data, data, 1 /* net->host */ );
+  /* On-disk resultcode is not reliably stored (the reference packet has
+   * an invalid nonzero value); incoming Moo packets are work-in-progress
+   * so force RESULT_WORKING like the wrapper does. */
+  data->resultcode = RESULT_WORKING;
+
+  /* blank the consumed packet */
+  memset( pkt, 0, MOO521_RECLEN );
+  if (fseek(f, fpos, SEEK_SET) != 0)
+    return -1;
+  fwrite( pkt, 1, MOO521_RECLEN, f );
+  fflush( f );
+
+  return 0;
+}
+
+/* Find the next blank Moo slot (or append) and write one packet.
+ * Returns 0 on success, -1 on I/O error.  Advances *reccountP if a
+ * new slot was created. */
+static int moo_write_one_record( FILE *f, u32 *reccountP,
+                                 const WorkRecord *data )
+{
+  u8 body[168];
+  u8 pkt[MOO521_RECLEN];
+  u8 blank[MOO521_RECLEN];
+  memset( blank, 0, MOO521_RECLEN );
+
+  /* Normalize to the Moo on-disk (network) byte order the same way the
+   * stock BufferPutFileRecord does: place in `scratch` so the caller's
+   * `data` is untouched, then byte-swap the `work` union (contest is
+   * already RC5_72 in host order, so __switch_byte_order dispatches to
+   * the RC5_72 ntohl branch). */
+  WorkRecord scratch;
+  __switch_byte_order( &scratch, data, 0 /* host->net */ );
+
+  /* pack WorkRecord -> body */
+  moo521_pack( &scratch, body );
+
+  /* encode body -> encrypted packet with a fresh seed */
+  u32 seed = (u32)~0u; /* fixed non-zero seed; could be randomized */
+  moo521_encode( body, seed, pkt );
+
+  /* scan for a blank slot, or append */
+  unsigned long reccount = *reccountP;
+  unsigned long writerec = reccount; /* default: append */
+  for (unsigned long i = 0; i < reccount; i++)
+  {
+    u8 rd[MOO521_RECLEN];
+    if (fseek(f, (long)(MOO521_HEADERLEN + i * MOO521_RECLEN), SEEK_SET) != 0)
+      return -1;
+    if (fread(rd, 1, MOO521_RECLEN, f) != MOO521_RECLEN)
+      break;
+    if (memcmp(rd, blank, MOO521_RECLEN) == 0)
+    {
+      writerec = i;
+      break;
+    }
+  }
+
+  if (writerec == reccount)
+  {
+    /* appending: increment header count */
+    reccount++;
+    /* write updated header */
+    u8 hdr[MOO521_HEADERLEN];
+    moo521_make_header( hdr, reccount );
+    if (fseek(f, 0, SEEK_SET) != 0)
+      return -1;
+    fwrite( hdr, 1, MOO521_HEADERLEN, f );
+    *reccountP = reccount;
+  }
+
+  /* write the packet */
+  long fpos = (long)(MOO521_HEADERLEN + writerec * MOO521_RECLEN);
+  if (fseek(f, fpos, SEEK_SET) != 0)
+    return -1;
+  if (fwrite(pkt, 1, MOO521_RECLEN, f) != MOO521_RECLEN)
+    return -1;
+  fflush( f );
+  return 0;
+}
+
+/* --------------------------------------------------------------------- */
 
 int UnlockBuffer( const char *filename )
 {
@@ -259,6 +436,30 @@ static void __switch_byte_order( WorkRecord *dest, const WorkRecord *source,
 int BufferPutFileRecord( const char *filename, const WorkRecord * data,
                          unsigned long *countP, int flags )
 {
+  if (moo_file_detect( filename ))
+  {
+    const char *qfname = GetFullPathForFilename( filename );
+    FILE *f = fopen( qfname, "r+b" );
+    if (!f)
+    {
+      f = fopen( qfname, "w+b" );
+      if (!f) return -1;
+      u8 hdr[MOO521_HEADERLEN];
+      moo521_make_header( hdr, 0 );
+      fwrite( hdr, 1, MOO521_HEADERLEN, f );
+      fflush( f );
+    }
+    u8 hdr[MOO521_HEADERLEN];
+    u32 reccount = 0;
+    if (fseek(f, 0, SEEK_SET) == 0 &&
+        fread(hdr, 1, MOO521_HEADERLEN, f) == MOO521_HEADERLEN)
+      moo521_header_count( hdr, &reccount );
+    int rc = moo_write_one_record( f, &reccount, data );
+    fclose( f );
+    if (countP) *countP = (rc == 0) ? reccount : 0;
+    return (rc == 0) ? 0 : -1;
+  }
+
   unsigned long reccount;
   FILE *file = BufferOpenFile( filename, &reccount, flags );
   long count = -1L;
@@ -312,6 +513,54 @@ int BufferGetFileRecord( const char *filename, WorkRecord * data,
                          unsigned long *countP, int flags, int /* required_core */ ) 
                         /* returns <0 on ioerr, >0 if norecs */
 {
+  if (moo_file_detect( filename ))
+  {
+    const char *qfname = GetFullPathForFilename( filename );
+    FILE *f = fopen( qfname, "r+b" );
+    int rc = +1;
+    if (f)
+    {
+      u8 hdr[MOO521_HEADERLEN];
+      u32 reccount = 0;
+      if (fseek(f, 0, SEEK_SET) != 0 ||
+          fread(hdr, 1, MOO521_HEADERLEN, f) != MOO521_HEADERLEN)
+      { fclose(f); return -1; }
+      moo521_header_count( hdr, &reccount );
+      for (unsigned long i = 0; i < reccount; i++)
+      {
+        int r = moo_read_one_record( f, reccount, i, data );
+        if (r == 0)
+        { rc = 0; fclose(f); break; }       /* got a record */
+        if (r == -1)
+        { rc = -1; fclose(f); break; }      /* I/O error */
+      }
+      if (rc == +1)
+      {
+        fclose(f);
+        BufferZapFileRecords( filename );    /* all blank -> truncate */
+      }
+    }
+    if (countP)
+    {
+      *countP = 0;
+      if (rc == 0)
+      {
+        /* re-open read-only to count remaining records */
+        FILE *fc = fopen( qfname, "rb" );
+        if (fc)
+        {
+          u8 hdr2[MOO521_HEADERLEN];
+          u32 rc2 = 0;
+          if (fread(hdr2, 1, MOO521_HEADERLEN, fc) == MOO521_HEADERLEN)
+            moo521_header_count( hdr2, &rc2 );
+          moo_count_records( fc, rc2, RC5_72, countP, NULL );
+          fclose( fc );
+        }
+      }
+    }
+    return rc;
+  }
+
   unsigned long reccount = 0;
   FILE *file = BufferOpenFile( filename, &reccount, flags );
   int rc = -1;
@@ -360,6 +609,29 @@ int BufferGetFileRecord( const char *filename, WorkRecord * data,
 int BufferCountFileRecords( const char *filename, unsigned int contest,
                        unsigned long *packetcountP, unsigned long *normcountP )
 {
+  if (moo_file_detect( filename ))
+  {
+    const char *qfname = GetFullPathForFilename( filename );
+    FILE *f = fopen( qfname, "rb" );
+    int failed = -1;
+    unsigned long packetcount = 0, normcount = 0;
+    if (f)
+    {
+      u8 hdr[MOO521_HEADERLEN];
+      u32 reccount = 0;
+      if (fread(hdr, 1, MOO521_HEADERLEN, f) == MOO521_HEADERLEN &&
+          moo521_header_count(hdr, &reccount) == 0)
+      {
+        moo_count_records( f, reccount, contest, &packetcount, &normcount );
+        failed = 0;
+      }
+      fclose(f);
+    }
+    if (packetcountP) *packetcountP = (failed == 0) ? packetcount : 0;
+    if (normcountP)   *normcountP   = (failed == 0) ? normcount   : 0;
+    return failed;
+  }
+
   unsigned long normcount = 0, reccount = 0;
   FILE *file = BufferOpenFile( filename, &reccount, BUFFER_FLAGS_NOLWRITE );
   int failed = -1;

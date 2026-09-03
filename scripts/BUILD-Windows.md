@@ -49,6 +49,13 @@ Set up an x64 MSVC environment and the CUDA path, then run:
 A successful build produces `dnetc.exe` in the tree root (and object files in
 `output\`). The Hyunjin core is core index #5 (`[rc5-72] core = 5`).
 
+The Moo! Wrapper RC5-72 buffer-file format (`in.r72` / `out.r72` using the
+`moo521` codec) is compiled into the buffer layer in `common/buffpub.cpp`
+automatically. `common/moo521.cpp` is part of the RC5-72 source set in
+`configure` and `makefile.vc`, so no extra command-line switches are needed —
+the client detects a Moo file by its magic header and reads/writes it
+in place of the stock `buff-*.rc572` files.
+
 ### 4. Configure and run the client
 Put the binary plus the files from `packaging/` (or `dist/windows-x86_64/`)
 side by side and run exactly as moowrap's wrapper does:

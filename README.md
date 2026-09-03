@@ -67,6 +67,19 @@ Every implementation passes the authentic dnetc RC5-72 test vector #0
   ```
 - **CUDA Fortran (legacy):** verified before the CUDA-C port was created.
 
+## Moo! Wrapper buffer-file format (`moo521`)
+
+The Moo! Wrapper feeds each work unit to the client as a binary buffer file
+(`in.r72`) in a format that differs from the stock distributed.net buffer
+files: a **32-byte header** + **N x 176-byte packets**, each packet being the
+*encrypted* (obfuscated) form of one RC5-72 unit with its own per-packet
+cipher key and an 8-pass checksum.
+
+`docs/MOO521-FORMAT.md` documents the full format (header, 176-byte packet,
+record-body field map, cipher, checksum), and `common/moo521.{h,cpp}` provides
+a verified codec that parses/encodes it. Validate it with
+`scripts/build-moo521-selftest-linux.sh` (host-only, no CUDA/GPU needed).
+
 ---
 
 ## Repository layout
@@ -80,6 +93,7 @@ legacy/                Original CUDA Fortran (.cuf/.f90) + old C shim
 test/
   hyunjin_selftest_c.c standalone self-test for the CUDA-C core
   hyunjin_selftest.cuf standalone self-test for the CUDA Fortran core
+  moo521_codec_test.cpp standalone self-test for the Moo! Wrapper buffer codec
 dnetc-integration/
   dnetc-r72-hyunjin-coresel.patch   registers the core into core_r72.cpp
   README.md
@@ -87,10 +101,13 @@ scripts/
   build-linux-x86_64.sh    Linux amd64 client build (nvcc + g++)
   build-linux-aarch64.sh   Linux arm64 cross build
   build-selftest-linux.sh  build + run the CUDA-C validator
+  build-moo521-selftest-linux.sh  build + run the Moo! buffer codec validator
   BUILD-Windows.md         Windows x64 build guide
 packaging/             BOINC anonymous-app files (app_info, job.xml, dnetc.ini)
 dist/                  Ready-to-run binaries (windows-x86_64 included)
 docs/                  Extended guides
+  ARCHITECTURE.md
+  MOO521-FORMAT.md     reverse-engineered Moo! Wrapper buffer-file format + codec
 ```
 
 ---

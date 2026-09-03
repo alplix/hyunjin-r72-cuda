@@ -1445,6 +1445,7 @@ fi
 #
 if [ "$HAVE_RC5_72" = "1" ]; then
 COMMON_SRCS="common/core_r72.cpp \
+             common/moo521.cpp \
              ${COMMON_SRCS}      \
              rc5-72/stress.cpp"
 fi # HAVE_RC5_72

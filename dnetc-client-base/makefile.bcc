@@ -89,6 +89,7 @@ COMMON_OBJS =                        \
         $(OUTPUTPATH)/console.obj    \
         $(OUTPUTPATH)/coremem.obj    \
         $(OUTPUTPATH)/core_r72.obj   \
+        $(OUTPUTPATH)/moo521.obj     \
         $(OUTPUTPATH)/core_ogr.obj   \
         $(OUTPUTPATH)/cpucheck.obj   \
         $(OUTPUTPATH)/disphelp.obj   \

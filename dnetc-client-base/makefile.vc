@@ -298,6 +298,7 @@ COMMON_OBJS =                        \
         $(OUTPUTPATH)/console.obj    \
         $(OUTPUTPATH)/coremem.obj    \
         $(OUTPUTPATH)/core_r72.obj   \
+        $(OUTPUTPATH)/moo521.obj     \
         $(OUTPUTPATH)/core_ogr.obj   \
         $(OUTPUTPATH)/core_ogr_ng.obj \
         $(OUTPUTPATH)/cpucheck.obj   \
