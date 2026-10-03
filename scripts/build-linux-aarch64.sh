@@ -87,7 +87,26 @@ echo "==> configuring dnetc client (aarch64)"
 # 4. Build with Hyunjin objects + CUDA runtime injected.
 # ---------------------------------------------------------------------------
 CUDA_ROOT="$(cd "$(dirname "$(command -v "$NVCC")")/.." 2>/dev/null && pwd)"
-CUDA_LIB="${CUDA_LIB:-$CUDA_ROOT/targets/aarch64-linux/lib}"
+
+# Where the runtime actually lives depends on the install: a native ARM server
+# (Grace Hopper / Graviton) gets targets/sbsa-linux, a Jetson cross setup gets
+# targets/aarch64-linux, and a network install may only expose lib64. Probing
+# for libcudart is the reliable test -- hardcoding targets/aarch64-linux made
+# the link fail with "cannot find -lcudart" on the ARM runner.
+if [ -z "${CUDA_LIB:-}" ]; then
+  CUDA_LIB=""
+  for cand in "$CUDA_ROOT/targets/sbsa-linux/lib" \
+              "$CUDA_ROOT/targets/aarch64-linux/lib" \
+              "$CUDA_ROOT/targets"/*/lib \
+              "$CUDA_ROOT/lib64" "$CUDA_ROOT/lib"; do
+    if ls "$cand"/libcudart.so* >/dev/null 2>&1; then CUDA_LIB="$cand"; break; fi
+  done
+  if [ -z "$CUDA_LIB" ]; then
+    echo "ERROR: no libcudart.so under $CUDA_ROOT; set CUDA_LIB to the directory holding it"
+    exit 1
+  fi
+fi
+echo "==> cuda runtime: $CUDA_LIB"
 
 BASE_ADDOBJS="$(cd "$DN_BASE" && grep '^ADDOBJS' Makefile | cut -d= -f2- | sed 's/^[[:space:]]*//')"
 BASE_LIBS="$(cd "$DN_BASE" && grep '^LIBS' Makefile | cut -d= -f2- | sed 's/^[[:space:]]*//')"
