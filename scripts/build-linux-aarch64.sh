@@ -91,15 +91,37 @@ CUDA_LIB="${CUDA_LIB:-$CUDA_ROOT/targets/aarch64-linux/lib}"
 
 BASE_ADDOBJS="$(cd "$DN_BASE" && grep '^ADDOBJS' Makefile | cut -d= -f2- | sed 's/^[[:space:]]*//')"
 BASE_LIBS="$(cd "$DN_BASE" && grep '^LIBS' Makefile | cut -d= -f2- | sed 's/^[[:space:]]*//')"
+BASE_LDFLAGS="$(cd "$DN_BASE" && grep '^LDFLAGS' Makefile | cut -d= -f2- | sed 's/^[[:space:]]*//')"
+
+# The client links -lcudart dynamically, so it has to be able to find the CUDA
+# runtime next to itself.  configure bakes this rpath into the linux-cuda*
+# targets, but this script configures a plain linux-arm64 target and injects
+# the CUDA link flags by hand, so it has to add the rpath itself.  Without it
+# the binary searches only the system library paths and aborts with "error
+# while loading shared libraries: libcudart.so.13" even though the runtime
+# ships in lib/ beside it.
+#
+# The $$ is deliberate: this string is handed to make on the command line, make
+# folds each $$ to a single $, and the shell make invokes then folds \$ to $,
+# so the linker finally sees a literal $ORIGIN.  This is the same spelling the
+# configure-generated Makefile uses for its own rpath.
+RUNPATH_LDFLAGS='-Wl,-rpath=\$$ORIGIN/lib -Wl,-rpath,'"$CUDA_LIB"
 
 echo "==> injecting Hyunjin objects + CUDA runtime into dnetc link"
+echo "    rpath: $RUNPATH_LDFLAGS"
 mkdir -p "$DN_BASE/output"
 ( cd "$DN_BASE" && "$MAKE" \
     LD="$NVCC" \
     CC="$CC" CXX="$CXX" \
     ADDOBJS="$BASE_ADDOBJS $OBJ/hyunjin_r72.o $OBJ/hyunjin_r72_cuda.o" \
     LIBS="$BASE_LIBS -L$CUDA_LIB -lcudart -lrt -lpthread -lm" \
+    LDFLAGS="$BASE_LDFLAGS $RUNPATH_LDFLAGS" \
     dnetc 2>&1 | tee "$OUTDIR/make.log" )
 
+BIN="$DN_BASE/dnetc"
+[ -x "$BIN" ] || { echo "ERROR: no dnetc binary produced"; exit 1; }
+cp -f "$BIN" "$OUTDIR/dnetc"
+
 echo
-echo "==> BUILD FINISHED.  aarch64 client binary is in $DN_BASE/output/"
+echo "==> BUILD FINISHED: $OUTDIR/dnetc"
+readelf -d "$OUTDIR/dnetc" | grep -E 'NEEDED.*cudart|RUNPATH|RPATH' | sed 's/^/    /'
