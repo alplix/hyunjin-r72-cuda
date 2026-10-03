@@ -252,7 +252,14 @@ Problem *ProblemAlloc(unsigned thread_index)
 // TODO: acidblood/trashover
 #ifdef HAVE_CRYPTO_V2
     p = (char *)&(thisprob->iprobs[PICKPROB_CORE].priv_data.rc5_72unitwork);
-    if ((((unsigned long)p) & (sizeof(void *)-1)) != 0)
+    /* RC5_72UnitWork is built from 32-bit scalars (u32/int/long) and holds no
+       pointer or 64-bit member, so the alignment it really needs is that of
+       its widest scalar, sizeof(long).  InternalProblem is packed, so its
+       size is not a multiple of 8 and consecutive problems land on 4-byte
+       boundaries: asking for sizeof(void*)-1 rejected every one of them on
+       Win64, where long is 4 bytes but a pointer is 8.  On LP64 this still
+       evaluates to sizeof(void*)-1, i.e. the previous behaviour. */
+    if ((((unsigned long)p) & (sizeof(long) - 1)) != 0)
     {
       /* Ensure that the core data is going to be aligned */
       Log("priv_data.rc5_72unitwork for problem %d is misaligned!\n", __problem_counter);

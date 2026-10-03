@@ -106,7 +106,13 @@
 #if defined(_WIN64)
   #define CLIENT_OS        OS_WIN64
   #define CLIENT_OS_NAME   "Win64"
-  #if defined(_M_AMD64)
+  /* CUDA must be tested before _M_AMD64: on Win64 the arch macro is always
+     defined, so testing it first would pin CLIENT_CPU to CPU_AMD64 and the
+     GPU members of RC5_72UnitWork (devicenum, best_time, ...) would vanish.
+     The 32-bit branch below already orders it this way. */
+  #if defined(CUDA)
+    #define CLIENT_CPU     CPU_CUDA
+  #elif defined(_M_AMD64)
     #define CLIENT_CPU     CPU_AMD64
   #elif defined(_M_IA64)
     #define CLIENT_CPU     CPU_IA64

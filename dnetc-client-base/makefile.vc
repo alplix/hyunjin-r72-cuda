@@ -190,14 +190,54 @@ OPTS_LINK = $(OPTS_LINK) /warn:1
 
 # --------------------------------------------
 
+!if "$(NASM)" == ""
+NASM = nasmw
+!endif
+
 # nVidia CUDA GPU support
 
 !if "$(PROCESSOR_ARCHITECTURE)" == "cuda" || "$(PROCESSOR_ARCHITECTURE)" == "AMD64_CUDA"
-OPTS_MSVC = $(OPTS_MSVC) -I$(CUDA_INC_PATH)
-OPTS_LIBS = $(OPTS_LIBS) version.lib $(CUDA_LIB_PATH)\cudart.lib
+
+# Derive the include/lib paths from CUDA_PATH when they were not passed in
+# explicitly, so that a plain "set CUDA_PATH=..." is enough to build.
+!if defined(CUDA_PATH)
+!if "$(CUDA_INC_PATH)" == ""
+CUDA_INC_PATH = $(CUDA_PATH)\include
+!endif
+!if "$(CUDA_LIB_PATH)" == ""
+CUDA_LIB_PATH = $(CUDA_PATH)\lib\x64
+!endif
+!endif
+
+# Device architectures to generate code for.  sm_120 covers Blackwell
+# (RTX 50xx); the trailing compute_120 keeps the binary loadable on newer
+# GPUs via PTX JIT.  Override on the command line to target something else.
+!if "$(CUDA_ARCHS)" == ""
+CUDA_ARCHS = -arch=compute_120 -code=sm_120,compute_120
+!endif
+
+OPTS_MSVC = $(OPTS_MSVC) -I"$(CUDA_INC_PATH)"
+OPTS_LIBS = $(OPTS_LIBS) version.lib "$(CUDA_LIB_PATH)\cudart.lib"
 ZIPEXTRAS = $(ZIPEXTRAS) docs\readme.cuda
 
-!if ( [cmd /c plat\win\cudaver.cmd] == 12000 )
+# NMAKE only expands [cmd ...] inside directives, using the command's exit
+# code -- never inside a macro assignment.  So EXPECTED_CUDA_VERSION has to
+# be spelled out per branch, exactly as the older branches below do.
+!if ( [cmd /c plat\win\cudaver.cmd] == 13030 )
+ZIPSUFFIX = win32-x86-cuda133
+OPTS_MSVC = $(OPTS_MSVC) -DEXPECTED_CUDA_VERSION=13030 -DCUDA_VERSION=13030
+!elseif ( [cmd /c plat\win\cudaver.cmd] == 13020 )
+ZIPSUFFIX = win32-x86-cuda132
+OPTS_MSVC = $(OPTS_MSVC) -DEXPECTED_CUDA_VERSION=13020 -DCUDA_VERSION=13020
+!elseif ( [cmd /c plat\win\cudaver.cmd] == 13010 )
+ZIPSUFFIX = win32-x86-cuda131
+OPTS_MSVC = $(OPTS_MSVC) -DEXPECTED_CUDA_VERSION=13010 -DCUDA_VERSION=13010
+!elseif ( [cmd /c plat\win\cudaver.cmd] >= 13000 )
+# A CUDA 13.x we have no explicit entry for.  Build it, but leave
+# EXPECTED_CUDA_VERSION undefined so cputypes.h skips the equality check
+# instead of failing on a wrong constant.
+ZIPSUFFIX = win32-x86-cuda13
+!elseif ( [cmd /c plat\win\cudaver.cmd] == 12000 )
 ZIPSUFFIX = win32-x86-cuda120
 OPTS_MSVC = $(OPTS_MSVC) -DEXPECTED_CUDA_VERSION=12000 -DCUDA_VERSION=12000
 !elseif ( [cmd /c plat\win\cudaver.cmd] == 11080 )
@@ -414,9 +454,7 @@ RC5_72_OBJS = \
         $(OUTPUTPATH)/r72-avx2.obj \
         $(OUTPUTPATH)/r72ansi1.obj \
         $(OUTPUTPATH)/r72ansi2.obj \
-        $(OUTPUTPATH)/r72ansi4.obj \
-        $(OUTPUTPATH)/hyunjin_r72.obj \
-        $(OUTPUTPATH)/hyunjin_r72_cuda.obj
+        $(OUTPUTPATH)/r72ansi4.obj
 OPTS_MSVC = $(OPTS_MSVC) -DHAVE_RC5_72_CORES
 !if defined(CUDA_PATH)
 OPTS_MSVC = $(OPTS_MSVC) -I"$(CUDA_PATH)\include"
@@ -443,7 +481,9 @@ RC5_72_OBJS =                             \
         $(OUTPUTPATH)/r72cuda-1pipe.obj   \
         $(OUTPUTPATH)/r72cuda-2pipe.obj   \
         $(OUTPUTPATH)/r72cuda-4pipe.obj   \
-        $(OUTPUTPATH)/r72cuda-4pipe-modern.obj 
+        $(OUTPUTPATH)/r72cuda-4pipe-modern.obj \
+        $(OUTPUTPATH)/hyunjin_r72.obj     \
+        $(OUTPUTPATH)/hyunjin_r72_cuda.obj
 OPTS_MSVC = $(OPTS_MSVC) -DHAVE_RC5_72_CORES -DCUDA -DDYN_TIMESLICE -DHAVE_HYUNJIN_CUDA_CORE
 !elseif "$(PROCESSOR_ARCHITECTURE)" == "ATI_STREAM"
 RC5_72_OBJS =                             \
@@ -570,6 +610,7 @@ VC_CHECK = $(OUTPUTPATH)/bltwith.vc
 #ensure that vc, watcom and bcc objs don't collide
 
 $(VC_CHECK):
+        @-if not exist "$(OUTPUTPATH)" md "$(OUTPUTPATH)"
         @-del $(OUTPUTPATH:/=\)\*.o?? $(RES_FILE:/=\)
         @echo moo > $(VC_CHECK:/=\)
 
@@ -611,28 +652,19 @@ $(VC_CHECK):
 {$(RC572SRCPATH)/cuda}.c{$(OUTPUTPATH)}.obj::
         cl -c -O2 $(OPTS_MSVC) -Fo$(OUTPUTPATH)\ $<
 
-{cuda}.cu{$(OUTPUTPATH)}.obj:
-        "$(CUDA_PATH)\bin\nvcc.exe" -c -O2 -arch=compute_120 -code=sm_120 -Xcompiler "-D__WIN32__ -D_AMD64_ -GS- -MT -DNDEBUG -Icommon -Iplat/win -Iplat/amd64 -Irc5-72/cuda" -I"$(CUDA_PATH)\include" -o $(@:/=\) $<
-
-$(OUTPUTPATH)/hyunjin_r72_cuda.obj: $(RC572SRCPATH)/cuda/hyunjin_r72_cuda.cu
-        "$(CUDA_PATH)\bin\nvcc.exe" -c -O2 -arch=compute_120 -code=sm_120 -Xcompiler "-D__WIN32__ -D_AMD64_ -GS- -MT -DNDEBUG -Icommon -Iplat/win -Iplat/amd64 -Irc5-72/cuda" -I"$(CUDA_PATH)\include" -o $(@:/=\) $(RC572SRCPATH)/cuda/hyunjin_r72_cuda.cu
-
-$(OUTPUTPATH)/hyunjin_r72.obj: $(RC572SRCPATH)/cuda/hyunjin_r72.cpp
-        cl -c -O2 $(OPTS_MSVC) -I"$(CUDA_PATH)\include" -Fo$(OUTPUTPATH)\ $(RC572SRCPATH)/cuda/hyunjin_r72.cpp
-
 !elseif "$(PROCESSOR_ARCHITECTURE)" == "x86"
 
 {$(CHIPSRCPATH)}.asm{$(OUTPUTPATH)}.obj:
-        nasmw -o $(@:/=\) -f win32 -i $(CHIPSRCPATH:/=\) $(**:/=\)
+        $(NASM) -o $(@:/=\) -f win32 -i $(CHIPSRCPATH:/=\) $(**:/=\)
 
 {$(CHIPSRCPATH)}.cpp{$(OUTPUTPATH)}.obj::
         cl -c $(OPTS_MSVC) -Ox -Fo$(OUTPUTPATH)\ $<
 
 {$(RC572SRCPATH)/x86}.asm{$(OUTPUTPATH)}.obj:
-        nasmw -o $(@:/=\) -f win32 -i $(RC572SRCPATH:/=\)\x86\ $(**:/=\)
+        $(NASM) -o $(@:/=\) -f win32 -i $(RC572SRCPATH:/=\)\x86\ $(**:/=\)
 
 {$(OGRSRCPATH)/x86}.asm{$(OUTPUTPATH)}.obj:
-        nasmw -O5 -o $(@:/=\) -f win32 -i $(OGRSRCPATH:/=\)\x86\ $(**:/=\)
+        $(NASM) -O5 -o $(@:/=\) -f win32 -i $(OGRSRCPATH:/=\)\x86\ $(**:/=\)
 
 {$(OGRSRCPATH)/x86}.cpp{$(OUTPUTPATH)}.obj::
         cl -c $(OPTS_MSVC) -Ox -Fo$(OUTPUTPATH)\ $<
@@ -640,23 +672,38 @@ $(OUTPUTPATH)/hyunjin_r72.obj: $(RC572SRCPATH)/cuda/hyunjin_r72.cpp
 !elseif "$(PROCESSOR_ARCHITECTURE)" == "cuda" || "$(PROCESSOR_ARCHITECTURE)" == "AMD64_CUDA"
 
 {$(CHIPSRCPATH)}.asm{$(OUTPUTPATH)}.obj:
-        nasmw -o $(@:/=\) -f win32 -i $(CHIPSRCPATH:/=\) $(**:/=\)
+        $(NASM) -o $(@:/=\) -f win32 -i $(CHIPSRCPATH:/=\) $(**:/=\)
 
 {$(CHIPSRCPATH)}.cpp{$(OUTPUTPATH)}.obj::
         cl -c $(OPTS_MSVC) -Ox -Fo$(OUTPUTPATH)\ $<
 
 !if "$(PROCESSOR_ARCHITECTURE)" == "AMD64_CUDA"
-{$(RC572SRCPATH)/cuda}.cu{$(OUTPUTPATH)}.obj:
-        $(CUDA_BIN_PATH)\nvcc -v -c -O2 -Xcompiler "$(OPTS_MSVC)" -D__WIN32__ -D_M_AMD64 -DNDEBUG -Icommon -DLURK -Iplat/win -o $(@:/=\) $< > output\nvccout.txt
+CUDA_NVCC_HOST = -D_M_AMD64 -D_AMD64_ -GS-
+CUDA_NVCC_INC = -Icommon -Iplat/win -Iplat/amd64 -I$(RC572SRCPATH)/cuda
 !else
-{$(RC572SRCPATH)/cuda}.cu{$(OUTPUTPATH)}.obj:
-        $(CUDA_BIN_PATH)\nvcc -v -c -O2 -Xcompiler "$(OPTS_MSVC)" -D__WIN32__ -D_M_IX86 -DNDEBUG -Icommon -DLURK -Iplat/win -o $(@:/=\) $< > output\nvccout.txt
+CUDA_NVCC_HOST = -D_M_IX86 -D_IX86_
+CUDA_NVCC_INC = -Icommon -Iplat/win -I$(RC572SRCPATH)/cuda
 !endif
+
+# Defines shared with the rest of the client, so that the .cu translation
+# units see the same struct layouts as the .cpp ones.  Built from OPTS_MSVC
+# rather than by forwarding it, because OPTS_MSVC carries a -I for a CUDA
+# path that normally contains spaces and cannot survive -Xcompiler quoting.
+CUDA_NVCC_DEFS = -D__WIN32__ -DNDEBUG -DLURK -DCUDA -DDYN_TIMESLICE -DHAVE_RC5_72_CORES -DHAVE_HYUNJIN_CUDA_CORE $(CUDA_NVCC_HOST)
+
+{$(RC572SRCPATH)/cuda}.cu{$(OUTPUTPATH)}.obj:
+        "$(CUDA_PATH)\bin\nvcc.exe" -c -O2 $(CUDA_ARCHS) -Xcompiler "$(CUDA_NVCC_DEFS)" $(CUDA_NVCC_INC) -I"$(CUDA_INC_PATH)" -o $(@:/=\) $<
+
+$(OUTPUTPATH)/hyunjin_r72_cuda.obj: $(RC572SRCPATH)/cuda/hyunjin_r72_cuda.cu
+        "$(CUDA_PATH)\bin\nvcc.exe" -c -O2 $(CUDA_ARCHS) -Xcompiler "$(CUDA_NVCC_DEFS)" $(CUDA_NVCC_INC) -I"$(CUDA_INC_PATH)" -o $(@:/=\) $(RC572SRCPATH)/cuda/hyunjin_r72_cuda.cu
+
+$(OUTPUTPATH)/hyunjin_r72.obj: $(RC572SRCPATH)/cuda/hyunjin_r72.cpp
+        cl -c -O2 $(OPTS_MSVC) -I"$(CUDA_INC_PATH)" -Fo$(OUTPUTPATH)\ $(RC572SRCPATH)/cuda/hyunjin_r72.cpp
 
 !elseif "$(PROCESSOR_ARCHITECTURE)" == "ATI_STREAM"
 
 {$(CHIPSRCPATH)/x86}.asm{$(OUTPUTPATH)}.obj:
-        nasmw -o $(@:/=\) -f win32 -i $(CHIPSRCPATH:/=\) $(**:/=\)
+        $(NASM) -o $(@:/=\) -f win32 -i $(CHIPSRCPATH:/=\) $(**:/=\)
 
 {$(CHIPSRCPATH)/x86}.cpp{$(OUTPUTPATH)}.obj::
         cl -c $(OPTS_MSVC) -Ox -Fo$(OUTPUTPATH)\ $<
@@ -670,7 +717,7 @@ $(OUTPUTPATH)/hyunjin_r72.obj: $(RC572SRCPATH)/cuda/hyunjin_r72.cpp
 !elseif "$(PROCESSOR_ARCHITECTURE)" == "OPENCL"
 
 {$(CHIPSRCPATH)/x86}.asm{$(OUTPUTPATH)}.obj:
-        nasmw -o $(@:/=\) -f win32 -i $(CHIPSRCPATH:/=\) $(**:/=\)
+        $(NASM) -o $(@:/=\) -f win32 -i $(CHIPSRCPATH:/=\) $(**:/=\)
 
 {$(CHIPSRCPATH)/x86}.cpp{$(OUTPUTPATH)}.obj::
         cl -c $(OPTS_MSVC) -Ox -Fo$(OUTPUTPATH)\ $<

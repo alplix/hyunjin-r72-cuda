@@ -71,10 +71,21 @@ unsigned int GetCUDAGPUFrequency(int device)
 {
   unsigned int freq = 0;
   if (device >= 0 && device < GetNumberOfDetectedCUDAGPUs()) {
+#if CUDART_VERSION >= 13000
+    // CUDA 13 dropped the cudaDeviceProp::clockRate field.  The device
+    // attribute still reports the same clock, in kilohertz.  Use
+    // CUDART_VERSION (from cuda_runtime_api.h) rather than CUDA_VERSION
+    // (from cuda.h), so this does not depend on -DCUDA_VERSION reaching
+    // every build system.
+    int khz = 0;
+    if (cudaDeviceGetAttribute(&khz, cudaDevAttrClockRate, device) == cudaSuccess)
+      freq = (unsigned int)khz / 1000;
+#else
     cudaDeviceProp deviceProp;
     cudaError_t rc = cudaGetDeviceProperties(&deviceProp, device);
     if (rc == cudaSuccess)
       freq = deviceProp.clockRate / 1000;
+#endif
   }
   return freq;
 }
