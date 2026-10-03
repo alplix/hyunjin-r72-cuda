@@ -3471,7 +3471,12 @@ case "$1" in
         TARGET_LDFLAGS="$TARGET_LDFLAGS -Wl,-rpath=\\\$\$ORIGIN/lib,-rpath=${TARGET_CUDA_LIB_PATH}"
         # Need the CUDA libs to be able to run the testplat program
         export LD_LIBRARY_PATH="${TARGET_CUDA_LIB_PATH}"
-        TARGET_LIBS="-lcudart -lrt"
+        # CUDA 13's nvcc emits host code that references C++ runtime symbols
+        # such as __cxa_guard_acquire, so the objects no longer link against
+        # libc alone.  Harmless on older toolkits: the link is driven by gcc,
+        # which defaults to --as-needed and drops the library again when no
+        # symbol from it is used.
+        TARGET_LIBS="-lcudart -lrt -lstdc++"
         TARGET_TARBALL="linux-${inferred_arch}${inferred_cuda_tarball_suffix}"
         TARGET_DOCFILES="docs/readme.linux docs/readme.cuda"   #platform specific docfile
         TARGET_LIBFILES="plat/cuda/cudatoolkit_eula.txt $TARGET_CUDA_LIB_PATH/libcudart.so.${TARGET_CUDA_VERSION%%.*} $TARGET_CUDA_LIB_PATH/libcudart.so.${TARGET_CUDA_VERSION}*"
