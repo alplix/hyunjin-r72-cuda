@@ -167,6 +167,12 @@ static int BufferCloseFile( FILE *file )
 static void __switch_byte_order( WorkRecord *dest, const WorkRecord *source,
                                  int from_disk );
 
+/* Sticky flag: once any buffer file on disk has been recognised as Moo, the
+ * output buffer is written in the same format.  Without it a client handed a
+ * Moo in.r72 would create out.r72 from scratch using the stock record layout,
+ * because there is no magic to sniff yet on a file that does not exist. */
+static int moo_output_mode = 0;
+
 /* Quick Moo magic detection.  Returns 1 if `filename` exists and begins
  * with the 32-byte Moo header (magic 83 B6 34 1A), 0 otherwise. */
 static int moo_file_detect( const char *filename )
@@ -179,7 +185,22 @@ static int moo_file_detect( const char *filename )
   if (fread(magic, 1, 4, f) == 4)
     is_moo = moo521_is_header( magic );
   fclose(f);
+  if (is_moo) moo_output_mode = 1;
   return is_moo;
+}
+
+/* True if `filename` carries no format information yet: either it does not
+ * exist, or the counting path already created it as a zero-length placeholder.
+ * Such a file has no magic to sniff, so the output buffer is free to adopt the
+ * Moo format discovered from the input buffer. */
+static int moo_file_missing( const char *filename )
+{
+  const char *qfname = GetFullPathForFilename( filename );
+  FILE *f = fopen( qfname, "rb" );
+  if (!f) return 1;
+  int empty = (fseek( f, 0, SEEK_END ) == 0) && (ftell( f ) == 0);
+  fclose(f);
+  return empty;
 }
 
 /* Count the non-blank Moo packets in an already-open file positioned after
@@ -436,7 +457,8 @@ static void __switch_byte_order( WorkRecord *dest, const WorkRecord *source,
 int BufferPutFileRecord( const char *filename, const WorkRecord * data,
                          unsigned long *countP, int flags )
 {
-  if (moo_file_detect( filename ))
+  if (moo_file_detect( filename ) ||
+      (moo_output_mode && moo_file_missing( filename )) )
   {
     const char *qfname = GetFullPathForFilename( filename );
     FILE *f = fopen( qfname, "r+b" );

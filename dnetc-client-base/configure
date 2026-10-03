@@ -62,7 +62,9 @@ TARGET_NASM_FMT="elf"
 TARGET_STRIP="strip"
 TARGET_OGR_MULTI=""    #<-can be used to compile ogr.cpp with differing gcc opts
 TARGET_IS_CROSSCOMPILE=""
-if [ -x /usr/bin/nvcc ]; then
+if [ -n "$CUDA_INSTALL_PATH" ]; then
+TARGET_CUDA_INSTALL_PATH="$CUDA_INSTALL_PATH"
+elif [ -x /usr/bin/nvcc ]; then
 TARGET_CUDA_INSTALL_PATH=""
 elif [ -d /Developer/NVIDIA ]; then
 TARGET_CUDA_INSTALL_PATH="/Developer/NVIDIA/CUDA-5.5"
@@ -3861,7 +3863,17 @@ echo "BUILDNAME = $1" >> Makefile
 echo "DOCFILES = ${TARGET_DOCFILES}" >>Makefile
 echo "LIBFILES = ${TARGET_LIBFILES}" >> Makefile
 echo "NVCC = ${TARGET_NVCC}" >>Makefile   
-echo "NVCCFLAGS = \${CFLAGS}" >> Makefile   
+# nvcc's <crt/math_functions.h> declares cospi/sinpi/rsqrt as noexcept, but
+# glibc 2.39+ declares the same C23 functions itself once
+# __GLIBC_USE_IEC_60559_FUNCS_EXT_C23 turns on, which g++ always triggers by
+# defining _GNU_SOURCE for C++.  The redeclaration then fails with "exception
+# specification is incompatible".  Dropping _GNU_SOURCE keeps glibc quiet and
+# only affects the .cu translation units.  Only relevant for a glibc+gcc host.
+CUDA_NVCC_GLIBC_FLAGS=""
+if [ "$TARGET_CC" = "gcc" ]; then
+  CUDA_NVCC_GLIBC_FLAGS="-U_GNU_SOURCE"
+fi
+echo "NVCCFLAGS = \${CFLAGS} $CUDA_NVCC_GLIBC_FLAGS" >> Makefile   
 if [ "$TARGET_USES_GNUMAKE" = "yes" ]; then
   # GNUMake $(shell ) evaluates only once - but this isn't supported by BSD make etc ...
   echo "BUILDNUM:= \$(shell grep \" CLIENT_BUILD_FRAC \" common/version.h|$TARGET_TR -dc 0123456789)\${BUILDNUM_APPEND}" >>Makefile
