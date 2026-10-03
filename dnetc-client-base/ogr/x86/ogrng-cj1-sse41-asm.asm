@@ -6,7 +6,7 @@
 ;
 
 %ifdef __NASM_VER__
-        cpu     p4
+        cpu     nehalem
 %else
         cpu     p4 sse4.1
 %endif

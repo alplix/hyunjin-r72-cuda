@@ -39,7 +39,7 @@
 
   <!-- Our job.xml + dnetc.ini take the place of Moo's app-level job/ini files.
        Without these file_refs the BOINC client would stage Moo's stock
-       dnetc.ini (which has no [rc5-72] core=5 line), silently disabling the
+       dnetc.ini (which has no [rc5-72] core=12 line), silently disabling the
        Hyunjin core.  copy_file puts a working copy in each job slot. -->
   <file_info>
     <name>job.xml</name>

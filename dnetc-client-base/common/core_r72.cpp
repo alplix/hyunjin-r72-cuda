@@ -118,7 +118,9 @@ extern "C" s32 rc5_72_unit_func_ocl_4pipe (RC5_72UnitWork *rc5_72unitwork, u32 *
 extern "C" s32 rc5_72_unit_func_scalarfusion(RC5_72UnitWork *rc5_72unitwork, u32 *iterations, void *);
 #endif
 
+#if defined(HAVE_HYUNJIN_CUDA_CORE)
 extern "C" s32 CDECL rc5_72_unit_func_hyunjin( RC5_72UnitWork *, u32 *, void * );
+#endif
 
 
 /* ======================================================================== */
@@ -162,7 +164,9 @@ const char **corenames_for_contest_rc572()
       "GO 2-pipe alt",
       "GO 2-pipe b",
       "YK/RT AVX2",
+      #if defined(HAVE_HYUNJIN_CUDA_CORE)
       "Hyunjin CUDA 4-pipe",
+      #endif
       #else /* no nasm -> only ansi cores */
       "ANSI 4-pipe",
       "ANSI 2-pipe",
@@ -174,7 +178,9 @@ const char **corenames_for_contest_rc572()
       "GO 2-pipe c",
       "GO 2-pipe d",
       "YK AVX2",
+      #if defined(HAVE_HYUNJIN_CUDA_CORE)
       "Hyunjin CUDA 4-pipe",
+      #endif
   #elif (CLIENT_CPU == CPU_ARM)
       "StrongARM 1-pipe",
       "ARM 2/3/6/7 1-pipe",
@@ -216,7 +222,9 @@ const char **corenames_for_contest_rc572()
       "ANSI 2-pipe",
       "ANSI 1-pipe",
       "KS-ScalarFusion",
+      #if defined(HAVE_HYUNJIN_CUDA_CORE)
       "Hyunjin CUDA 4-pipe",
+      #endif
   #elif (CLIENT_CPU == CPU_MIPS)
       "ANSI 4-pipe",
       "ANSI 2-pipe",
@@ -235,6 +243,9 @@ const char **corenames_for_contest_rc572()
       "CUDA 1-pipe 64-thd busy wait",
       "CUDA 1-pipe 64-thd sleep 100us",
       "CUDA 1-pipe 64-thd sleep dynamic",
+      #if defined(HAVE_HYUNJIN_CUDA_CORE)
+      "Hyunjin CUDA 4-pipe",
+      #endif
   #elif (CLIENT_CPU == CPU_ATI_STREAM)
       "IL 4-pipe c",
       "IL 4-pipe c alt",
@@ -864,12 +875,14 @@ int selcoreSelectCore_rc572(Client *client, unsigned int threadindex,
         unit_func.gen_72 = rc5_72_unit_func_avx2;
         pipeline_count = 8;
         break;
+      #if defined(HAVE_HYUNJIN_CUDA_CORE)
       case 13:
         unit_func.gen_72 = rc5_72_unit_func_hyunjin;
         pipeline_count = 4;
         break;
+      #endif
      // -----------
-     #elif (CLIENT_CPU == CPU_AMD64)
+    #elif (CLIENT_CPU == CPU_AMD64)
       case 0:
         unit_func.gen_72 = rc5_72_unit_func_snjl;
         pipeline_count = 3;
@@ -891,10 +904,12 @@ int selcoreSelectCore_rc572(Client *client, unsigned int threadindex,
         unit_func.gen_72 = rc5_72_unit_func_avx2;
         pipeline_count = 16;
         break;
+      #if defined(HAVE_HYUNJIN_CUDA_CORE)
       case 5:
         unit_func.gen_72 = rc5_72_unit_func_hyunjin;
         pipeline_count = 4;
         break;
+      #endif
     // -----------
     #elif (CLIENT_CPU == CPU_POWERPC) && (CLIENT_OS != OS_WIN32)
       case 0:
@@ -1001,8 +1016,14 @@ int selcoreSelectCore_rc572(Client *client, unsigned int threadindex,
         unit_func.gen_72 = rc5_72_unit_func_cuda_1_64_s1;
         pipeline_count = 1;
         break;
+      #if defined(HAVE_HYUNJIN_CUDA_CORE)
+      case 12:
+        unit_func.gen_72 = rc5_72_unit_func_hyunjin;
+        pipeline_count = 4;
+        break;
+      #endif
      // -----------
-     #elif (CLIENT_CPU == CPU_ATI_STREAM)
+    #elif (CLIENT_CPU == CPU_ATI_STREAM)
       case 0:
       default:
         unit_func.gen_72 = rc5_72_unit_func_il4_nand;
@@ -1102,10 +1123,12 @@ int selcoreSelectCore_rc572(Client *client, unsigned int threadindex,
 	unit_func.gen_72 = rc5_72_unit_func_scalarfusion;
 	pipeline_count = 1;
 	break;
+       #if defined(HAVE_HYUNJIN_CUDA_CORE)
        case 4:
 	unit_func.gen_72 = rc5_72_unit_func_hyunjin;
 	pipeline_count = 4;
 	break;
+       #endif
     #endif
 
     }

@@ -6,7 +6,7 @@
 ;
 
 %ifdef __NASM_VER__
-        cpu     p4
+        cpu     nehalem
 %else
         cpu     p4
 %if (__YASM_MAJOR__ < 1)

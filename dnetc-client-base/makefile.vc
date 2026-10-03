@@ -444,7 +444,7 @@ RC5_72_OBJS =                             \
         $(OUTPUTPATH)/r72cuda-2pipe.obj   \
         $(OUTPUTPATH)/r72cuda-4pipe.obj   \
         $(OUTPUTPATH)/r72cuda-4pipe-modern.obj 
-OPTS_MSVC = $(OPTS_MSVC) -DHAVE_RC5_72_CORES -DCUDA -DDYN_TIMESLICE
+OPTS_MSVC = $(OPTS_MSVC) -DHAVE_RC5_72_CORES -DCUDA -DDYN_TIMESLICE -DHAVE_HYUNJIN_CUDA_CORE
 !elseif "$(PROCESSOR_ARCHITECTURE)" == "ATI_STREAM"
 RC5_72_OBJS =                             \
         $(OUTPUTPATH)/r72stream-common.obj   \

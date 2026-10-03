@@ -756,7 +756,11 @@ add_sources() # $1=os, $2=arch, $3=custom
       TARGET_ADDCUDASRCS="$TARGET_ADDCUDASRCS \
                           rc5-72/cuda/r72cuda-1pipe.cu \
                           rc5-72/cuda/r72cuda-2pipe.cu \
-                          rc5-72/cuda/r72cuda-4pipe.cu"
+                          rc5-72/cuda/r72cuda-4pipe.cu \
+                          rc5-72/cuda/hyunjin_r72_cuda.cu"
+      TARGET_ADDSRCS="$TARGET_ADDSRCS \
+                          rc5-72/cuda/hyunjin_r72.cpp"
+      TARGET_CCFLAGS="$TARGET_CCFLAGS -DHAVE_HYUNJIN_CUDA_CORE"
     fi # HAVE_RC5_72
 
   #-----------------------------------------------------------------
@@ -912,8 +916,41 @@ infer_cuda_version() { # $1=configure target
     internal-*-cuda70)
       inferred_cuda_version="7.0"
       ;;
+    internal-*-cuda110)
+      inferred_cuda_version="11.0"
+      ;;
+    internal-*-cuda111)
+      inferred_cuda_version="11.1"
+      ;;
+    internal-*-cuda112)
+      inferred_cuda_version="11.2"
+      ;;
+    internal-*-cuda117)
+      inferred_cuda_version="11.7"
+      ;;
+    internal-*-cuda118)
+      inferred_cuda_version="11.8"
+      ;;
+    internal-*-cuda120)
+      inferred_cuda_version="12.0"
+      ;;
+    internal-*-cuda124)
+      inferred_cuda_version="12.4"
+      ;;
+    internal-*-cuda125)
+      inferred_cuda_version="12.5"
+      ;;
+    internal-*-cuda126)
+      inferred_cuda_version="12.6"
+      ;;
+    internal-*-cuda128)
+      inferred_cuda_version="12.8"
+      ;;
+    internal-*-cuda129)
+      inferred_cuda_version="12.9"
+      ;;
     internal-*-cuda)
-      for _ver in $TARGET_CUDA_VERSION 7.0 6.5 6.0 5.5 3.1 3.0 2.3 2.2 2.1 2.0
+      for _ver in $TARGET_CUDA_VERSION 12.9 12.8 12.6 12.4 12.0 11.8 11.2 11.0 7.0 6.5 6.0 5.5 3.1 3.0 2.3 2.2 2.1 2.0
       do
         if [ -f "${TARGET_CUDA_LIB_PATH}/libcudart.so.${_ver}" ] || \
            [ -f "${TARGET_CUDA_LIB_PATH}/libcudart.so.${_ver}".* ]; then
@@ -4230,10 +4267,22 @@ if [ -n "${TARGET_SRCOBJLIST}" ]; then
       # additionally 7.0 dropped support for sm_11, sm_12 and sm_13 archs
       if [ $cudaver -lt 605 ]; then
         CUDA_CODEGEN="--generate-code arch=compute_10,code=compute_10"
+        CUDA_CODEGEN="$CUDA_CODEGEN --generate-code arch=compute_20,code=compute_20 --generate-code arch=compute_30,code=compute_30 --generate-code arch=compute_35,code=compute_35 --generate-code arch=compute_50,code=compute_50"
       elif [ $cudaver -lt 700 ]; then
         CUDA_CODEGEN="--generate-code arch=compute_11,code=compute_11"
+        CUDA_CODEGEN="$CUDA_CODEGEN --generate-code arch=compute_20,code=compute_20 --generate-code arch=compute_30,code=compute_30 --generate-code arch=compute_35,code=compute_35 --generate-code arch=compute_50,code=compute_50"
+      elif [ $cudaver -lt 800 ]; then
+        CUDA_CODEGEN="--generate-code arch=compute_30,code=compute_30 --generate-code arch=compute_35,code=compute_35 --generate-code arch=compute_50,code=compute_50 --generate-code arch=compute_60,code=compute_60 --generate-code arch=compute_61,code=compute_61 --generate-code arch=compute_70,code=compute_70"
+      elif [ $cudaver -lt 1200 ]; then
+        CUDA_CODEGEN="--generate-code arch=compute_50,code=sm_50 --generate-code arch=compute_60,code=sm_60 --generate-code arch=compute_70,code=sm_70 --generate-code arch=compute_75,code=sm_75 --generate-code arch=compute_80,code=sm_80 --generate-code arch=compute_86,code=sm_86 --generate-code arch=compute_89,code=sm_89"
+      else
+        # CUDA 12.x+ dropped the sm_2x/3x/5x families this script used to
+        # emit unconditionally, and nvcc now rejects them outright.  Emit
+        # only architectures the modern toolkit still accepts; sm_120
+        # covers Blackwell (RTX 50xx) and the trailing compute_120 entry
+        # embeds PTX so the fatbin still runs on GPUs newer than nvcc.
+        CUDA_CODEGEN="--generate-code arch=compute_75,code=sm_75 --generate-code arch=compute_86,code=sm_86 --generate-code arch=compute_89,code=sm_89 --generate-code arch=compute_120,code=sm_120 --generate-code arch=compute_120,code=compute_120"
       fi
-      CUDA_CODEGEN="$CUDA_CODEGEN --generate-code arch=compute_20,code=compute_20 --generate-code arch=compute_30,code=compute_30 --generate-code arch=compute_35,code=compute_35 --generate-code arch=compute_50,code=compute_50"
       echo "	\${NVCC} -c $CUDA_CODEGEN --compiler-options \"\${NVCCFLAGS}\" ${TARGETSRC} -o $target" >> Makefile
       echo "" >> Makefile
       TARGETSRC=""
