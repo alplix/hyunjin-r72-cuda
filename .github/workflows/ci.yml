@@ -81,7 +81,28 @@ jobs:
             || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_x86_64"
           chmod +x "$OUT/dnetc_hyunjin_1.0_linux_x86_64"
           cp -f README.md "$OUT/README.txt"
-          # reference ini points at core <5> only if repacked below; keep consistent
+          # Ship the CUDA runtime beside the binary.  The client links
+          # -lcudart dynamically and configure bakes '$ORIGIN/lib' into its
+          # RUNPATH, so an archive without lib/ refuses to start on any host
+          # that lacks the toolkit -- exactly what broke the v1.2 asset.
+          CUDA_LIBDIR=""
+          for c in "${CUDA_PATH:-}" "${CUDA_HOME:-}" "${CUDA_INSTALL_PATH:-}" \
+                   /usr/local/cuda-* /usr/local/cuda; do
+            [ -n "$c" ] || continue
+            c="${c%/}"
+            for d in "$c/lib64" "$c/target/lib64" "$c/lib" "$c"/targets/*/lib; do
+              if ls "$d"/libcudart.so.* >/dev/null 2>&1; then CUDA_LIBDIR="$d"; break 2; fi
+            done
+          done
+          if [ -z "$CUDA_LIBDIR" ]; then
+            echo "::error::libcudart.so not found -- refusing to publish a client that cannot start"
+            exit 1
+          fi
+          mkdir -p "$OUT/lib"
+          cp -a "$CUDA_LIBDIR"/libcudart.so.* "$OUT/lib/"
+          ln -sf "$(cd "$OUT/lib" && ls -1 libcudart.so.* | grep -E '^libcudart\.so\.[0-9]+$' | head -1)" "$OUT/lib/libcudart.so"
+          echo "bundled CUDA runtime from $CUDA_LIBDIR:"
+          ls -1 "$OUT/lib"
           echo "banner:" > "$OUT/BUILD.txt"
           echo "  Hyunjin RC5-72 CUDA core v1.0 - coded by Alperen Yavuz" >> "$OUT/BUILD.txt"
           NAME="hyunjin_linux_x86_64_cuda_custom_${PKG_VERSION}"
@@ -142,6 +163,25 @@ jobs:
             || cp -f dnetc-client-base/dnetc  "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
           chmod +x "$OUT/dnetc_hyunjin_1.0_linux_aarch64"
           cp -f README.md "$OUT/README.txt"
+          # Same runtime bundling as x86_64: $ORIGIN/lib is in the RUNPATH, so
+          # libcudart has to travel with the binary.
+          CUDA_LIBDIR=""
+          for c in "${CUDA_PATH:-}" "${CUDA_HOME:-}" "${CUDA_INSTALL_PATH:-}" \
+                   /usr/local/cuda-* /usr/local/cuda; do
+            [ -n "$c" ] || continue
+            c="${c%/}"
+            for d in "$c/lib64" "$c/target/lib64" "$c/lib" "$c"/targets/*/lib; do
+              if ls "$d"/libcudart.so.* >/dev/null 2>&1; then CUDA_LIBDIR="$d"; break 2; fi
+            done
+          done
+          if [ -z "$CUDA_LIBDIR" ]; then
+            echo "::error::libcudart.so not found -- refusing to publish a client that cannot start"
+            exit 1
+          fi
+          mkdir -p "$OUT/lib"
+          cp -a "$CUDA_LIBDIR"/libcudart.so.* "$OUT/lib/"
+          ln -sf "$(cd "$OUT/lib" && ls -1 libcudart.so.* | grep -E '^libcudart\.so\.[0-9]+$' | head -1)" "$OUT/lib/libcudart.so"
+          ls -1 "$OUT/lib"
           NAME="hyunjin_linux_aarch64_cuda_custom_${PKG_VERSION}"
           tar -C "$OUT" -czf "dist/linux-aarch64/$NAME.tar.gz" .
           echo "name=$NAME.tar.gz" >> "$GITHUB_OUTPUT"
