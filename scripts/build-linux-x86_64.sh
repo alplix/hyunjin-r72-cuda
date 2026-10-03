@@ -8,18 +8,27 @@
 #
 # Builds a custom distributed.net client (Linux x86_64) with the Hyunjin
 # CUDA-C RC5-72 core compiled in.  Requires:
-#   - NVIDIA CUDA toolkit (nvcc) for x86_64 Linux
-#   - gcc/g++, make, patch
-#   - an NVIDIA GPU + driver at runtime (Ampere or newer recommended)
+#   - NVIDIA CUDA toolkit (nvcc) 12.8 or newer for Blackwell (sm_120)
+#   - gcc/g++, make
+#   - an NVIDIA GPU + driver at runtime
 #
-# This uses the authoritative CUDA-C core (src/hyunjin_r72_cuda.cu) and the
-# C++ shim (src/hyunjin_r72.cpp) that are also used by the Windows build.  The
-# CUDA-Fortran core (the original implementation) lives in legacy/ and is NOT
-# used here; it required the NVIDIA HPC SDK (nvfortran) which is not available
-# on Windows, which is why the CUDA-C port exists.
+# The CUDA-C core (src/hyunjin_r72_cuda.cu) and its C++ shim
+# (src/hyunjin_r72.cpp) are the authoritative implementation; they are also
+# what the Windows build compiles.  The CUDA-Fortran core in legacy/ is NOT
+# used: it needs the NVIDIA HPC SDK (nvfortran).
+#
+# The client registers the Hyunjin core as the last entry of the CUDA core
+# table, so select it with:
+#     [rc5-72]
+#     core=12
 #
 # Usage:
 #   ./build-linux-x86_64.sh <path-to-dnetc-client-base> [outdir]
+#
+# Environment:
+#   CUDA_INSTALL_PATH   toolkit root (default: autodetected under /usr/local)
+#   HOSTCC              C compiler for the host side, when nvcc rejects the
+#                       default one (CUDA 12.8 refuses gcc > 14)
 #
 # For use in distributed.net projects only.
 # Any other distribution or use of this source violates copyright.
@@ -37,76 +46,70 @@ find "$DN_BASE" -maxdepth 3 -type f \
   \( -name 'configure' -o -name 'tomake' -o -name 'imake' -o -name '*.sh' -o -name '*.pl' \) \
   -exec chmod +x {} + 2>/dev/null || true
 
-NVCC="${NVCC:-nvcc}"
-CXX="${CXX:-g++}"
 MAKE="${MAKE:-make}"
-
-echo "==> dnetc base : $DN_BASE"
-echo "==> cores      : $SRC/src"
-echo "==> output     : $OUTDIR"
-echo "==> compilers  : nvcc=$NVCC cxx=$CXX"
-
-command -v "$NVCC" >/dev/null || { echo "ERROR: nvcc not found (set NVCC)"; exit 1; }
-command -v "$CXX" >/dev/null  || { echo "ERROR: c++ compiler not found (set CXX)"; exit 1; }
-command -v patch >/dev/null  || { echo "ERROR: patch not found"; exit 1; }
-
 mkdir -p "$OUTDIR"
-OBJ="$OUTDIR/obj"
-mkdir -p "$OBJ"
 
-# GPU architectures to embed (Ampere cc80, Hopper cc90, Blackwell cc100/cc120).
-GPU_ARCHS="${GPU_ARCHS:--gencode arch=compute_80,code=sm_80 -gencode arch=compute_90,code=sm_90 -gencode arch=compute_100,code=sm_100 -gencode arch=compute_120,code=sm_120}"
+export CUDA_INSTALL_PATH="${CUDA_INSTALL_PATH:-}"
+if [ -z "$CUDA_INSTALL_PATH" ]; then
+  for cand in /usr/local/cuda-* /usr/local/cuda /opt/cuda*; do
+    if [ -x "$cand/bin/nvcc" ]; then CUDA_INSTALL_PATH="$cand"; break; fi
+  done
+fi
+export CUDA_INSTALL_PATH
+NVCC="$CUDA_INSTALL_PATH/bin/nvcc"
+[ -x "$NVCC" ] || { echo "ERROR: nvcc not found; set CUDA_INSTALL_PATH"; exit 1; }
+export PATH="$CUDA_INSTALL_PATH/bin:$PATH"
 
-# ---------------------------------------------------------------------------
-# 1. Apply the dnetc core-registration patch (idempotent).
-# ---------------------------------------------------------------------------
-PATCH="$SRC/dnetc-integration/dnetc-r72-hyunjin-coresel.patch"
-if grep -q 'rc5_72_unit_func_hyunjin' "$DN_BASE/common/core_r72.cpp"; then
-  echo "==> core_r72.cpp already patched, skipping"
-else
-  echo "==> applying core registration patch"
-  ( cd "$DN_BASE" && patch -p1 < "$PATCH" )
+# The CUDA version decides both the configure target suffix and the -D value
+# the client uses to sanity-check the runtime it links against.
+CUDA_FULL="$("$NVCC" --version | sed -n 's/.*release \([0-9]\+\)\.\([0-9]\+\).*/\1.\2/p' | head -1)"
+[ -n "$CUDA_FULL" ] || { echo "ERROR: could not parse nvcc version"; exit 1; }
+CUDA_MAJOR="${CUDA_FULL%%.*}"
+CUDA_MINOR="${CUDA_FULL##*.}"
+CUDA_TARGET="linux-cuda${CUDA_MAJOR}${CUDA_MINOR}"
+echo "==> toolkit     : $CUDA_INSTALL_PATH (CUDA $CUDA_FULL)"
+echo "==> configure   : ./configure $CUDA_TARGET"
+
+# nvcc checks the host compiler's version and refuses gcc > 14 on CUDA 12.8.
+# Prefer an older supported gcc over nvcc's -allow-unsupported-compiler escape
+# hatch, since the latter risks miscompiling the host side.
+SHIM=""
+if [ -z "${HOSTCC:-}" ]; then
+  DEF_GCC_MAJOR="$(gcc -dumpversion 2>/dev/null | cut -d. -f1 || echo 0)"
+  if [ "$DEF_GCC_MAJOR" -gt 14 ] 2>/dev/null; then
+    for alt in gcc-14 gcc-13; do
+      if command -v "$alt" >/dev/null; then
+        SHIM="$OUTDIR/hostcc-shim"
+        mkdir -p "$SHIM"
+        ln -sf "$(command -v "$alt")" "$SHIM/gcc"
+        [ -x "$(command -v "g++-${alt#gcc-}")" ] && \
+          ln -sf "$(command -v "g++-${alt#gcc-}")" "$SHIM/g++"
+        export PATH="$SHIM:$PATH"
+        echo "==> host cc     : $alt ($(gcc -dumpversion)) via shim, default gcc is $DEF_GCC_MAJOR"
+        break
+      fi
+    done
+  fi
 fi
 
-# ---------------------------------------------------------------------------
-# 2. Compile the CUDA-C core + C++ shim to objects.
-# ---------------------------------------------------------------------------
-echo "==> compiling CUDA-C core + shim"
-"$NVCC" -c -O3 $GPU_ARCHS \
-    -o "$OBJ/hyunjin_r72_cuda.o" "$SRC/src/hyunjin_r72_cuda.cu"
-"$CXX" -c -O2 -I"$DN_BASE/common" \
-    -o "$OBJ/hyunjin_r72.o" "$SRC/src/hyunjin_r72.cpp"
+echo "==> dnetc base  : $DN_BASE"
+echo "==> output      : $OUTDIR"
 
-# ---------------------------------------------------------------------------
-# 3. Configure the distributed.net client for x86_64.
-# ---------------------------------------------------------------------------
-echo "==> configuring dnetc client (x86_64)"
-( cd "$DN_BASE" && ./configure linux-amd64 )
-
-# ---------------------------------------------------------------------------
-# 4. Build, injecting the Hyunjin objects and the CUDA runtime.
-#    Link with nvcc so the CUDA runtime is pulled in correctly.
-# ---------------------------------------------------------------------------
-CUDA_ROOT="$(cd "$(dirname "$(command -v "$NVCC")")/.." 2>/dev/null && pwd)"
-CUDA_LIB="${CUDA_LIB:-$CUDA_ROOT/lib64}"
-
-BASE_ADDOBJS="$(cd "$DN_BASE" && grep '^ADDOBJS' Makefile | cut -d= -f2- | sed 's/^[[:space:]]*//')"
-BASE_LIBS="$(cd "$DN_BASE" && grep '^LIBS' Makefile | cut -d= -f2- | sed 's/^[[:space:]]*//')"
-
-echo "==> injecting Hyunjin objects + CUDA runtime into dnetc link"
-echo "    ADDOBJS += $OBJ/hyunjin_r72.o $OBJ/hyunjin_r72_cuda.o"
-echo "    LIBS    += -L$CUDA_LIB -lcudart"
-echo "    LD       = nvcc (CUDA runtime)"
-
+# configure generates the Makefile but not the directory its rules write into.
 mkdir -p "$DN_BASE/output"
-( cd "$DN_BASE" && "$MAKE" \
-    LD="$NVCC" \
-    CXX="$CXX" \
-    ADDOBJS="$BASE_ADDOBJS $OBJ/hyunjin_r72.o $OBJ/hyunjin_r72_cuda.o" \
-    LIBS="$BASE_LIBS -L$CUDA_LIB -lcudart -lrt -lpthread -lm" \
-    dnetc 2>&1 | tee "$OUTDIR/make.log" )
+( cd "$DN_BASE" && ./configure "$CUDA_TARGET" 2>&1 | tee "$OUTDIR/configure.log" )
+
+( cd "$DN_BASE" && "$MAKE" 2>&1 | tee "$OUTDIR/make.log" )
+
+BIN="$DN_BASE/dnetc"
+[ -x "$BIN" ] || { echo "ERROR: no dnetc binary produced"; exit 1; }
+
+cp -f "$BIN" "$OUTDIR/dnetc"
+cp -f "$SRC/packaging/dnetc.ini" "$OUTDIR/dnetc.ini"
 
 echo
-echo "==> BUILD FINISHED.  Client binary is in $DN_BASE/output/"
-echo "    The Hyunjin core is selectable as RC5-72 core (see dnetc.ini [rc5-72] core=<idx>)."
-echo "    Run ./dnetc -ini <inifile> -runoffline -multiok=1 to process work."
+echo "==> BUILD FINISHED: $OUTDIR/dnetc"
+"$OUTDIR/dnetc" --version | sed -n 's/^dnetc /    /p'
+echo "    Select the core with [rc5-72] core=12 in dnetc.ini,"
+echo "    then run: ./dnetc -ini dnetc.ini -runoffline -multiok=1"
+echo "    Use './dnetc -gpuinfo' to confirm the GPU is detected."
