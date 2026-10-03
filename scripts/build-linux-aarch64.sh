@@ -107,14 +107,23 @@ BASE_LDFLAGS="$(cd "$DN_BASE" && grep '^LDFLAGS' Makefile | cut -d= -f2- | sed '
 # configure-generated Makefile uses for its own rpath.
 RUNPATH_LDFLAGS='-Wl,-rpath=\$$ORIGIN/lib -Wl,-rpath,'"$CUDA_LIB"
 
+# Link with the cross C++ compiler, not nvcc.  Every object is already
+# compiled at this point, and nvcc rejects the -Wl,... spelling that the rpath
+# below needs ("nvcc fatal: Unknown option '-Wl,-rpath=$ORIGIN/lib'").  gcc
+# accepts it, which is also what the linux-cuda* configure target uses to link.
+# -lstdc++ is listed explicitly for the same reason configure lists it: CUDA 13
+# host code references C++ runtime symbols.
+LINKER="${LD:-$CXX}"
+
 echo "==> injecting Hyunjin objects + CUDA runtime into dnetc link"
-echo "    rpath: $RUNPATH_LDFLAGS"
+echo "    linker: $LINKER"
+echo "    rpath : $RUNPATH_LDFLAGS"
 mkdir -p "$DN_BASE/output"
 ( cd "$DN_BASE" && "$MAKE" \
-    LD="$NVCC" \
+    LD="$LINKER" \
     CC="$CC" CXX="$CXX" \
     ADDOBJS="$BASE_ADDOBJS $OBJ/hyunjin_r72.o $OBJ/hyunjin_r72_cuda.o" \
-    LIBS="$BASE_LIBS -L$CUDA_LIB -lcudart -lrt -lpthread -lm" \
+    LIBS="$BASE_LIBS -L$CUDA_LIB -lcudart -lrt -lpthread -lm -lstdc++" \
     LDFLAGS="$BASE_LDFLAGS $RUNPATH_LDFLAGS" \
     dnetc 2>&1 | tee "$OUTDIR/make.log" )
 
@@ -124,4 +133,8 @@ cp -f "$BIN" "$OUTDIR/dnetc"
 
 echo
 echo "==> BUILD FINISHED: $OUTDIR/dnetc"
-readelf -d "$OUTDIR/dnetc" | grep -E 'NEEDED.*cudart|RUNPATH|RPATH' | sed 's/^/    /'
+# Informational: a missing rpath here means the packaged client will only run
+# with LD_LIBRARY_PATH set, so keep it visible without failing the build.
+readelf -d "$OUTDIR/dnetc" 2>/dev/null \
+  | grep -E 'NEEDED.*cudart|RUNPATH|RPATH' | sed 's/^/    /' \
+  || echo "    WARNING: no RUNPATH found -- the client will need LD_LIBRARY_PATH"
